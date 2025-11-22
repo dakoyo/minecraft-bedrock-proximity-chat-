@@ -1,0 +1,14 @@
+{
+	"scripts": {
+		"build": "tsc",
+		"dev": "node dist/index"
+	},
+	"dependencies": {
+		"@types/ws": "^8.18.1",
+		"express": "^5.1.0",
+		"ws": "^8.18.3"
+	},
+	"devDependencies": {
+		"@types/express": "^5.0.5"
+	}
+}

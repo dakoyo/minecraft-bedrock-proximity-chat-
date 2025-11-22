@@ -1,0 +1,42 @@
+{
+    "format_version": 2,
+    "header": {
+        "name": "Minecraft Bedrock Proximity Chat",
+        "description": "",
+        "uuid": "6b159127-7011-4f37-b384-603fd10ddb93",
+        "version": [
+            1,
+            0,
+            0
+        ],
+        "min_engine_version": [
+            1,
+            21,
+            10
+        ]
+    },
+    "modules": [
+        {
+            "type": "script",
+            "language": "javascript",
+            "description": "",
+            "uuid": "dcf862c0-d43e-47c1-af2e-651b3f91baec",
+            "version": [
+                1,
+                0,
+                0
+            ],
+            "entry": "scripts/dist/main.js"
+        }
+    ],
+    "dependencies": [
+        {
+            "module_name": "@minecraft/server",
+            "version": "2.3.0"
+        },
+        {
+            "module_name": "@minecraft/server-ui",
+            "version": "2.0.0"
+        }
+    ]
+}
