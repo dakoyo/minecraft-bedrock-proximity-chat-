@@ -3,8 +3,11 @@ import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { randomUUID } from 'crypto';
 import url from 'url';
+import cors from 'cors';
 
 const app = express();
+app.use(cors());
+
 const server = http.createServer(app);
 
 const ownerWss = new WebSocketServer({ noServer: true });
