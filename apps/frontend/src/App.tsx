@@ -3,6 +3,7 @@ import { Button } from './components/ui/button'
 import { Input } from './components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card'
 import { PlayerGrid } from './components/PlayerGrid'
+import { ControlBar } from './components/ControlBar'
 import { Copy, Check } from 'lucide-react'
 
 function App() {
@@ -133,17 +134,48 @@ function App() {
       )}
 
       {view === 'connected' && (
-        <div className="w-full h-full flex flex-col items-center justify-center space-y-8">
-          <div className="text-center space-y-2">
+        <div className="w-full h-full flex flex-col items-center justify-center pb-20">
+          <div className="text-center space-y-2 mb-8">
             <h2 className="text-3xl font-bold tracking-tight">Connected</h2>
             <p className="text-muted-foreground">Room Code: <span className="font-mono">{roomCode}</span></p>
           </div>
 
-          <PlayerGrid players={players} />
+          <PlayerGrid players={players.filter(p => p !== myPlayerName)} />
 
-          <Button variant="destructive" size="lg" onClick={handleDisconnect}>
-            Disconnect
-          </Button>
+          {myPlayerName && (
+            <ControlBar
+              playerName={myPlayerName}
+              onDisconnect={handleDisconnect}
+            />
+          )}
+
+          {/* Debug Buttons - To be removed */}
+          <div className="flex gap-2 mt-8">
+            <Button
+              variant="outline"
+              className="border-dashed border-yellow-500 text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50"
+              onClick={() => {
+                const fakeName = `Player${Math.floor(Math.random() * 1000)}`
+                setPlayers(prev => [...prev, fakeName])
+              }}
+            >
+              [Debug] + Join
+            </Button>
+            <Button
+              variant="outline"
+              className="border-dashed border-red-500 text-red-500 hover:text-red-600 hover:bg-red-50"
+              onClick={() => {
+                setPlayers(prev => {
+                  if (prev.length === 0) return prev
+                  const newPlayers = [...prev]
+                  newPlayers.pop()
+                  return newPlayers
+                })
+              }}
+            >
+              [Debug] - Leave
+            </Button>
+          </div>
         </div>
       )}
 
