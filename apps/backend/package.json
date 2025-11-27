@@ -1,16 +1,22 @@
 {
-	"scripts": {
-		"build": "tsc",
-		"dev": "node dist/index"
-	},
-	"dependencies": {
-		"@types/cors": "^2.8.19",
-		"@types/ws": "^8.18.1",
-		"cors": "^2.8.5",
-		"express": "^5.1.0",
-		"ws": "^8.18.3"
-	},
-	"devDependencies": {
-		"@types/express": "^5.0.5"
-	}
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.23.0",
+  "dependencies": {
+    "@types/express": "^5.0.5",
+    "@types/ws": "^8.18.1",
+    "express": "^5.1.0",
+    "socket-be": "^2.3.1",
+    "ws": "^8.18.3"
+  }
 }

@@ -1,0 +1,23 @@
+{
+    "name": "minecraft-proximity-vc",
+    "private": true,
+    "workspaces": [
+        "apps/*",
+        "types"
+    ],
+    "scripts": {
+        "dev-addon": "node scripts/dev-addon.js"
+    },
+    "dependencies": {
+        "@minecraft/proximity-vc": "workspace:*",
+        "@minecraft/server": "^2.3.0",
+        "@minecraft/server-ui": "^2.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^24.10.1",
+        "chokidar": "^4.0.3",
+        "dotenv": "^17.2.3",
+        "fs-extra": "^11.3.2",
+        "typescript": "^5.9.3"
+    }
+}

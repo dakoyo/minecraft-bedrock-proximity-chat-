@@ -1,0 +1,30 @@
+{
+    "format_version": 2,
+    "header": {
+        "description": "Minecraft Proximity Voice Chat Resource Pack",
+        "name": "Minecraft Proximity Voice Chat Resource Pack",
+        "uuid": "3061f311-422d-41e4-be5e-18e0ffce7a40",
+        "version": [
+            1,
+            0,
+            0
+        ],
+        "min_engine_version": [
+            1,
+            16,
+            0
+        ]
+    },
+    "modules": [
+        {
+            "description": "Minecraft Proximity Voice Chat Resource Pack",
+            "type": "resources",
+            "uuid": "f22bda12-6b51-435f-9dbd-f15873993dd7",
+            "version": [
+                1,
+                0,
+                0
+            ]
+        }
+    ]
+}
