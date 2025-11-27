@@ -37,6 +37,24 @@ function handleMinecraftWsConnection(ws: WebSocket, req: IncomingMessage) {
 }
 
 function handleFrontEndWsConnection(ws: WebSocket, req: IncomingMessage) {
+    const url = new URL(req.url || "", "http://localhost");
+    const roomId = url.searchParams.get("roomId");
+    const playerCode = url.searchParams.get("playerCode");
+
+    console.log(`[WS] Connection attempt. URL: ${req.url}, roomId: ${roomId}, playerCode: ${playerCode}`);
+
+    if (roomId && playerCode) {
+        const roomHandler = rooms.get(roomId);
+        if (!roomHandler) {
+            console.log(`[WS] Room not found: ${roomId}`);
+            ws.close(1008, "Room not found");
+            return;
+        }
+        console.log(`[WS] Handling peer join for room: ${roomId}, player: ${playerCode}`);
+        roomHandler.handlePeerJoin(ws, playerCode);
+        return;
+    }
+
     let code = "";
     do {
         code = generateRandomRoomCode();

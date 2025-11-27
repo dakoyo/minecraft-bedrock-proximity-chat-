@@ -1,4 +1,5 @@
 import * as mc from "@minecraft/server";
+import { debug } from "../setting";
 const { world, system } = mc;
 
 export const command: mc.CustomCommand = {
@@ -24,11 +25,12 @@ export const command: mc.CustomCommand = {
 export function execute(ev: mc.CustomCommandOrigin, ...args: any[]): mc.CustomCommandResult {
 
     system.run(() => {
+        if (debug) world.sendMessage(`Name: ${args[0]}\n   Room ID: ${args[1]}\n    Player Code: ${args[2]}`);
+
         const player = world.getPlayers({ name: args[0] })[0];
         if (!player) {
             return;
         }
-        player.sendMessage(`Room ID: ${args[1]}\nPlayer Code: ${args[2]}`);
     })
 
     return {

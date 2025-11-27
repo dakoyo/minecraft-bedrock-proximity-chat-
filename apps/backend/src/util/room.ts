@@ -25,17 +25,77 @@ export class RoomHandler {
     private isSyncing = false;
     private destroyed = false;
 
+    private playerCodes = new Map<string, string>(); // code -> name
+    private peers = new Map<string, WebSocket>(); // code -> ws
+
     async handlePlayerJoin(playerName: string) {
         const playerCode = generateRandomPlayerCode();
 
         this.playerNames.push(playerName);
+        this.playerCodes.set(playerCode, playerName);
         this.frontEndWs.send(JSON.stringify({ type: "playerJoin", data: { playerName, playerCode } }));
         await this.notifyPlayerCode(playerName, playerCode);
     }
 
     async handlePlayerLeave(playerName: string) {
         this.playerNames.splice(this.playerNames.indexOf(playerName), 1);
+        // Remove from playerCodes
+        for (const [code, name] of this.playerCodes.entries()) {
+            if (name === playerName) {
+                this.playerCodes.delete(code);
+                const peerWs = this.peers.get(code);
+                if (peerWs) {
+                    peerWs.close();
+                    this.peers.delete(code);
+                }
+                break;
+            }
+        }
         this.frontEndWs.send(JSON.stringify({ type: "playerLeave", data: { playerName } }));
+    }
+
+    handlePeerJoin(ws: WebSocket, playerCode: string) {
+        const playerName = this.playerCodes.get(playerCode);
+        console.log(`[Room] handlePeerJoin. Code: ${playerCode}, Name: ${playerName}`);
+
+        if (!playerName) {
+            console.log(`[Room] Invalid player code: ${playerCode}`);
+            ws.close(1008, "Invalid player code");
+            return;
+        }
+
+        this.peers.set(playerCode, ws);
+
+        // Send join response to peer
+        ws.send(JSON.stringify({
+            type: "joinResponse",
+            data: {
+                playerName,
+                roomId: this.roomId
+            }
+        }));
+
+        // Handle signaling messages from peer
+        ws.on("message", (data) => {
+            try {
+                const message = JSON.parse(data.toString());
+                if (message.type === "signal") {
+                    // Forward signal to owner
+                    this.frontEndWs.send(JSON.stringify({
+                        type: "signal",
+                        target: "owner",
+                        sender: playerCode,
+                        payload: message.payload
+                    }));
+                }
+            } catch (e) {
+                console.error("Failed to parse peer message", e);
+            }
+        });
+
+        ws.on("close", () => {
+            this.peers.delete(playerCode);
+        });
     }
 
     async notifyPlayerCode(playerName: string, playerCode: string) {
@@ -91,6 +151,25 @@ export class RoomHandler {
         this.minecraftWs.on("message", this.boundHandleMessage);
         this.minecraftWs.on("error", (e) => {
             console.error("Minecraft WebSocket error:", e);
+        });
+
+        // Handle signaling messages from owner
+        this.frontEndWs.on("message", (data) => {
+            try {
+                const message = JSON.parse(data.toString());
+                if (message.type === "signal") {
+                    const targetPeer = this.peers.get(message.target);
+                    if (targetPeer) {
+                        targetPeer.send(JSON.stringify({
+                            type: "signal",
+                            sender: "owner",
+                            payload: message.payload
+                        }));
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to parse owner message", e);
+            }
         });
 
         if (this.destroyed) return;
@@ -179,5 +258,10 @@ export class RoomHandler {
             this.minecraftWs.off("message", this.boundHandleMessage);
             this.minecraftWs.terminate();
         }
+        // Close all peer connections
+        for (const peer of this.peers.values()) {
+            peer.close();
+        }
+        this.peers.clear();
     }
 }
