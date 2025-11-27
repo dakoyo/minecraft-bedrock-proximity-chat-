@@ -1,4 +1,4 @@
-import { Player, world } from "@minecraft/server";
+import { Entity, Player, world } from "@minecraft/server";
 import { GroupData, GroupTypes } from "@minecraft/proximity-vc";
 
 class GroupManager {
@@ -36,7 +36,7 @@ class GroupManager {
         return groups;
     }
 
-    getGroupsByPlayer(player: Player): GroupData[] {
+    getGroupsByPlayer(player: Player | Entity): GroupData[] {
         const groups: GroupData[] = [];
         for (const group of this.getAllGroups()) {
             if (player.hasTag(`vc_group_${group.name}`)) {

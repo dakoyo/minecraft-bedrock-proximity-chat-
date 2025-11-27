@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button } from './components/ui/button'
 import { Input } from './components/ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card'
+import { PlayerGrid } from './components/PlayerGrid'
 import { Copy, Check } from 'lucide-react'
 
 function App() {
-  const [view, setView] = useState<'home' | 'create' | 'join'>('home')
+  const [view, setView] = useState<'home' | 'create' | 'join' | 'connected'>('home')
   const [roomCode, setRoomCode] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
-  const [playerName, setPlayerName] = useState<string | null>(null)
+  const [players, setPlayers] = useState<string[]>([])
+  const [myPlayerName, setMyPlayerName] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
   // Join Room State
@@ -23,6 +25,13 @@ function App() {
       }
     }
   }, [])
+
+  // Transition to connected view when players join
+  useEffect(() => {
+    if (players.length > 0 && view === 'create') {
+      setView('connected')
+    }
+  }, [players, view])
 
   const createRoom = () => {
     setView('create')
@@ -39,7 +48,15 @@ function App() {
       if (message.code) {
         setRoomCode(message.code)
       } else if (message.type === 'playerJoin') {
-        setPlayerName(message.data.playerName)
+        const newPlayer = message.data.playerName
+        setMyPlayerName((prev) => prev || newPlayer) // First player is likely self in this simple implementation
+        setPlayers((prev) => {
+          if (prev.includes(newPlayer)) return prev
+          return [...prev, newPlayer]
+        })
+      } else if (message.type === 'playerLeave') {
+        const leavingPlayer = message.data.playerName
+        setPlayers((prev) => prev.filter(p => p !== leavingPlayer))
       }
     }
 
@@ -55,6 +72,14 @@ function App() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
+  }
+
+  const handleDisconnect = () => {
+    wsRef.current?.close()
+    setView('home')
+    setRoomCode(null)
+    setPlayers([])
+    setMyPlayerName(null)
   }
 
   return (
@@ -83,40 +108,43 @@ function App() {
               <div className="text-center text-muted-foreground">Connecting to server...</div>
             ) : (
               <>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 justify-center mb-6">
                   <Input
                     readOnly
                     value={roomCode ? `/connect localhost:3000/mcws/${roomCode}` : 'Loading...'}
-                    className="font-mono text-xs md:text-sm"
+                    className="font-mono text-xs md:text-sm max-w-[300px]"
                   />
                   <Button size="icon" variant="outline" onClick={copyCommand} disabled={!roomCode}>
                     {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </div>
 
-                {playerName ? (
-                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-lg text-center">
-                    <p className="text-green-600 font-medium">Connected as {playerName}</p>
-                    <p className="text-xs text-muted-foreground mt-1">You can now use voice chat</p>
-                  </div>
-                ) : (
-                  <div className="text-center text-sm text-muted-foreground animate-pulse">
-                    Waiting for Minecraft connection...
-                  </div>
-                )}
+                <div className="text-center text-sm text-muted-foreground animate-pulse py-12">
+                  Waiting for players to join...
+                </div>
 
-                <Button variant="ghost" className="w-full" onClick={() => {
-                  wsRef.current?.close()
-                  setView('home')
-                  setRoomCode(null)
-                  setPlayerName(null)
-                }}>
+                <Button variant="ghost" className="w-full" onClick={handleDisconnect}>
                   Cancel
                 </Button>
               </>
             )}
           </CardContent>
         </Card>
+      )}
+
+      {view === 'connected' && (
+        <div className="w-full h-full flex flex-col items-center justify-center space-y-8">
+          <div className="text-center space-y-2">
+            <h2 className="text-3xl font-bold tracking-tight">Connected</h2>
+            <p className="text-muted-foreground">Room Code: <span className="font-mono">{roomCode}</span></p>
+          </div>
+
+          <PlayerGrid players={players} />
+
+          <Button variant="destructive" size="lg" onClick={handleDisconnect}>
+            Disconnect
+          </Button>
+        </div>
       )}
 
       {view === 'join' && (

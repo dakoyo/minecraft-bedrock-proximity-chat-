@@ -89,6 +89,9 @@ export class RoomHandler {
     async init(mcws: WebSocket) {
         this.minecraftWs = mcws;
         this.minecraftWs.on("message", this.boundHandleMessage);
+        this.minecraftWs.on("error", (e) => {
+            console.error("Minecraft WebSocket error:", e);
+        });
 
         if (this.destroyed) return;
 
@@ -130,36 +133,40 @@ export class RoomHandler {
 
     runCommand(command: string) {
         return new Promise<string>((resolve, reject) => {
-            if (!this.minecraftWs) {
-                throw new Error("Minecraft WebSocket is not initialized");
-            }
-
-            const requestId = randomUUID();
-            const commandPacket = {
-                header: {
-                    version: 1,
-                    requestId: requestId,
-                    messagePurpose: "commandRequest",
-                },
-                body: {
-                    version: 1,
-                    commandLine: command,
-                    origin: {
-                        type: "player"
-                    }
-                },
-            };
-
-            this.commandRequests.set(requestId, { resolve, reject });
-            this.minecraftWs.send(JSON.stringify(commandPacket));
-
-            // Timeout to clean up stale requests
-            setTimeout(() => {
-                if (this.commandRequests.has(requestId)) {
-                    this.commandRequests.get(requestId)?.reject(`Timeout: ${command}`);
-                    this.commandRequests.delete(requestId);
+            try {
+                if (!this.minecraftWs) {
+                    throw new Error("Minecraft WebSocket is not initialized");
                 }
-            }, 5000);
+
+                const requestId = randomUUID();
+                const commandPacket = {
+                    header: {
+                        version: 1,
+                        requestId: requestId,
+                        messagePurpose: "commandRequest",
+                    },
+                    body: {
+                        version: 1,
+                        commandLine: command,
+                        origin: {
+                            type: "player"
+                        }
+                    },
+                };
+
+                this.commandRequests.set(requestId, { resolve, reject });
+                this.minecraftWs.send(JSON.stringify(commandPacket));
+
+                // Timeout to clean up stale requests
+                setTimeout(() => {
+                    if (this.commandRequests.has(requestId)) {
+                        this.commandRequests.get(requestId)?.reject(`Timeout: ${command}`);
+                        this.commandRequests.delete(requestId);
+                    }
+                }, 5000);
+            } catch (e) {
+                reject(e);
+            }
         })
     }
 

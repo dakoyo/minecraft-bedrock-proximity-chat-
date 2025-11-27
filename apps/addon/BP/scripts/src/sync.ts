@@ -1,6 +1,8 @@
-import { world } from "@minecraft/server";
+import * as mc from "@minecraft/server";
+const { world } = mc;
 import { SimplifiedSyncData } from "@minecraft/proximity-vc";
 import { groupManager } from "./group";
+import { debug } from "./setting";
 
 type EventTypes = "playerUpdate" | "groupUpdate";
 
@@ -11,6 +13,7 @@ class SyncManager {
     addEvent(type: EventTypes) {
         this.events.push(type);
     }
+    lastPlayerNumber: number = 0;
 
     clearEvents() {
         this.events = [];
@@ -22,10 +25,24 @@ class SyncManager {
             pd: []
         };
         const groups = groupManager.getAllGroups();
-        const players = world.getPlayers();
+        let players: (mc.Player | mc.Entity)[] = world.getPlayers();
+        if (debug) {
+            players = [...players, ...world.getDimension("overworld").getEntities({ type: "minecraft:armor_stand" })];
+        }
+
+        if (this.lastPlayerNumber !== players.length) {
+            this.lastPlayerNumber = players.length;
+            this.addEvent("playerUpdate");
+        }
 
         if (getAll || this.events.includes("playerUpdate")) {
-            data.pl = players.map(player => player.name);
+            data.pl = players.map(player => {
+                if (player instanceof mc.Player) {
+                    return player.name;
+                } else {
+                    return player.nameTag;
+                }
+            });
         }
 
         if (getAll || this.events.includes("groupUpdate")) {
@@ -35,6 +52,8 @@ class SyncManager {
                 p: group.password
             }))
         }
+
+        this.clearEvents();
 
         for (const player of players) {
             const loc = player.location;
@@ -68,5 +87,28 @@ class SyncManager {
         return data;
     }
 }
+
+// world.afterEvents.playerJoin.subscribe(ev => {
+//     syncManager.addEvent("playerUpdate");
+// })
+
+// world.afterEvents.playerLeave.subscribe(ev => {
+//     syncManager.addEvent("playerUpdate");
+// })
+
+// if (debug) {
+//     world.afterEvents.entitySpawn.subscribe(ev => {
+//         if (ev.entity.typeId === "minecraft:armor_stand") {
+//             syncManager.addEvent("playerUpdate");
+//         }
+//     })
+
+//     world.afterEvents.entityDie.subscribe(ev => {
+//         if (ev.deadEntity.typeId === "minecraft:armor_stand") {
+//             console.warn("TEST2")
+//             syncManager.addEvent("playerUpdate");
+//         }
+//     })
+// }
 
 export const syncManager = new SyncManager();
