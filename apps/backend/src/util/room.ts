@@ -22,6 +22,8 @@ export class RoomHandler {
     private lastSequenceNumber = -1;
     private getAll = true;
     private playerNames: string[] = [];
+    private isSyncing = false;
+    private destroyed = false;
 
     async handlePlayerJoin(playerName: string) {
         const playerCode = generateRandomPlayerCode();
@@ -37,10 +39,13 @@ export class RoomHandler {
     }
 
     async notifyPlayerCode(playerName: string, playerCode: string) {
+        if (this.localPlayerName === playerName) return;
         await this.runCommand(`vcserver:notifyplayer ${playerName} ${this.roomId} ${playerCode}`);
     }
 
     async sync() {
+        if (this.isSyncing || this.destroyed) return;
+        this.isSyncing = true;
         try {
             const syncMessageRaw = await this.runCommand(`vcserver:sync ${this.getAll ? "true" : "false"}`);
             const syncMessage: SimplifiedSyncMessage = JSON.parse(syncMessageRaw);
@@ -76,6 +81,8 @@ export class RoomHandler {
 
         } catch (e) {
             console.error(e);
+        } finally {
+            this.isSyncing = false;
         }
     }
 
@@ -83,10 +90,15 @@ export class RoomHandler {
         this.minecraftWs = mcws;
         this.minecraftWs.on("message", this.boundHandleMessage);
 
-        this.localPlayerName = await this.runCommand("getlocalplayername");
+        if (this.destroyed) return;
+
         this.interval = setInterval(async () => {
+            if (this.destroyed) {
+                if (this.interval) clearInterval(this.interval);
+                return;
+            }
             this.sync();
-        }, 100);
+        }, 200);
     }
 
     private handleMessage(data: RawData) {
@@ -107,6 +119,8 @@ export class RoomHandler {
                         request.reject(body.statusMessage);
                     }
                     this.commandRequests.delete(requestId);
+                } else {
+                    // console.log("Received response for unknown/expired requestId:", requestId);
                 }
             }
         } catch (error) {
@@ -142,7 +156,7 @@ export class RoomHandler {
             // Timeout to clean up stale requests
             setTimeout(() => {
                 if (this.commandRequests.has(requestId)) {
-                    this.commandRequests.get(requestId)?.reject("Timeout");
+                    this.commandRequests.get(requestId)?.reject(`Timeout: ${command}`);
                     this.commandRequests.delete(requestId);
                 }
             }, 5000);
@@ -150,10 +164,13 @@ export class RoomHandler {
     }
 
     destroy() {
-        this.interval?.unref();
+        this.destroyed = true;
+        if (this.interval) {
+            clearInterval(this.interval);
+        }
         if (this.minecraftWs) {
             this.minecraftWs.off("message", this.boundHandleMessage);
-            this.minecraftWs.close();
+            this.minecraftWs.terminate();
         }
     }
 }

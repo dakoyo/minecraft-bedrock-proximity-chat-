@@ -45,6 +45,12 @@ function handleFrontEndWsConnection(ws: WebSocket, req: IncomingMessage) {
 
     const roomHandler = new RoomHandler(ws, code);
     rooms.set(code, roomHandler);
+
+    ws.on("close", () => {
+        roomHandler.destroy();
+        rooms.delete(code);
+        console.log(`Room ${code} destroyed due to frontend disconnect.`);
+    });
 }
 
 
