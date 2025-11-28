@@ -17,6 +17,8 @@ function App() {
   const [players, setPlayers] = useState<string[]>([])
   const [myPlayerName, setMyPlayerName] = useState<string | null>(null)
   const [playerStatuses, setPlayerStatuses] = useState<Record<string, 'online' | 'offline'>>({})
+  const [playerData, setPlayerData] = useState<any[]>([])
+  const [vcSettings, setVcSettings] = useState<any>(null)
   const [playerCodes, setPlayerCodes] = useState<Record<string, string>>({}) // Code -> Name (Owner only)
   const wsRef = useRef<WebSocket | null>(null)
   const isIntentionalDisconnect = useRef(false)
@@ -54,16 +56,16 @@ function App() {
   // Broadcast updates whenever players or statuses change
   useEffect(() => {
     if (players.length > 0) {
-      broadcastPlayers(players, playerStatuses)
+      broadcastPlayers(players, playerStatuses, playerData, vcSettings)
     }
-  }, [players, playerStatuses])
+  }, [players, playerStatuses, playerData, vcSettings])
 
   const showToast = (message: string, type: ToastType = 'info') => {
     setToast({ message, type })
   }
 
-  const broadcastPlayers = (currentPlayers: string[], currentStatuses: Record<string, 'online' | 'offline'>) => {
-    const message = JSON.stringify({ type: 'update', players: currentPlayers, statuses: currentStatuses })
+  const broadcastPlayers = (currentPlayers: string[], currentStatuses: Record<string, 'online' | 'offline'>, currentPlayerData: any[], currentVcSettings: any) => {
+    const message = JSON.stringify({ type: 'update', players: currentPlayers, statuses: currentStatuses, playerData: currentPlayerData, vcSettings: currentVcSettings })
     dataChannels.current.forEach(dc => {
       if (dc.readyState === 'open') {
         dc.send(message)
@@ -121,6 +123,14 @@ function App() {
         if (msg.type === 'update') {
           setPlayers(msg.players)
           setPlayerStatuses(msg.statuses || {})
+          if (msg.playerData) {
+            setPlayerData(msg.playerData)
+            console.log('Received player data:', msg.playerData)
+          }
+          if (msg.vcSettings) {
+            setVcSettings(msg.vcSettings)
+            console.log('Received vc settings:', msg.vcSettings)
+          }
         }
       }
     } else {
@@ -132,7 +142,7 @@ function App() {
         setPlayers(prev => {
           // We need statuses too. Using functional update to access latest.
           setPlayerStatuses(prevStatuses => {
-            dc.send(JSON.stringify({ type: 'update', players: prev, statuses: prevStatuses }))
+            dc.send(JSON.stringify({ type: 'update', players: prev, statuses: prevStatuses, playerData: playerData, vcSettings: vcSettings }))
             return prevStatuses
           })
           return prev
@@ -238,6 +248,21 @@ function App() {
           [disconnectedPlayer]: 'offline'
         }))
         showToast(`${disconnectedPlayer} disconnected`, 'info')
+      } else if (message.type === 'sync') {
+        try {
+          const syncDataRaw = atob(message.data)
+          const syncData = JSON.parse(syncDataRaw)
+          if (syncData.pd) {
+            setPlayerData(syncData.pd)
+            // console.log('Updated player data:', syncData.pd)
+          }
+          if (syncData.s) {
+            setVcSettings(syncData.s)
+            // console.log('Updated vc settings:', syncData.s)
+          }
+        } catch (e) {
+          console.error('Failed to parse sync data', e)
+        }
       }
     }
 

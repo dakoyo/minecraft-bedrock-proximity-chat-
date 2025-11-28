@@ -1,113 +1,135 @@
-# Minecraft Proximity VC 通信フロー解説
+# Communication Flow
 
-このドキュメントでは、Minecraft Proximity VCにおけるMinecraft Addon（Behavior Pack）とBackendサーバー間の通信フローについて技術的に解説します。
+This document outlines the communication flow between the Backend, Frontend (Owner & Peers), and Minecraft Bedrock.
 
-## 1. システム概要
+## Overview
 
-本システムは、Minecraft内のプレイヤーの位置情報や回転情報をリアルタイムにBackendに送信し、それに基づいてボイスチャット（Frontend）の制御を行うことを目的としています。
+The application uses a combination of WebSockets and WebRTC to enable proximity chat.
+- **Backend**: Acts as a signaling server and bridges communication with Minecraft.
+- **Frontend (Owner)**: Connects to the backend, manages the room, and acts as the host for WebRTC connections.
+- **Frontend (Peer)**: Connects to the backend to join a room and establishes a P2P connection with the Owner.
+- **Minecraft**: Communicates with the backend via WebSocket to provide player positions and list.
 
-### コンポーネント構成
-- **Addon (BP)**: Minecraft Bedrock Edition上で動作するスクリプト。プレイヤー情報の収集とコマンド実行を担当。
-- **Backend**: Node.js/Expressサーバー。WebSocketサーバーとして機能し、AddonとFrontendの中継を行う。
-- **Frontend**: ユーザーがブラウザでアクセスするボイスチャットクライアント（本ドキュメントでは詳細割愛）。
+## 1. Backend Communication
 
-## 2. 通信アーキテクチャ
+### WebSocket Endpoints
 
-通信は主に**WebSocket**と**Minecraftのコマンドシステム**を利用して行われます。
+- **`/mcws`**: Endpoint for Minecraft Bedrock to connect.
+- **`/frontendws`**: Endpoint for the Frontend application.
 
-```mermaid
-sequenceDiagram
-    participant MC as Minecraft Addon
-    participant BE as Backend Server
-    participant FE as Frontend Client
+### WebSocket Events (Server -> Frontend Owner)
 
-    Note over MC, BE: 接続確立フェーズ
-    MC->>BE: WebSocket接続 (/mcws?roomId=...)
-    BE-->>MC: 接続承認
+| Type | Payload | Description |
+| :--- | :--- | :--- |
+| `code` | `{ code: string }` | Sent immediately after connection to assign a room code. |
+| `playerJoin` | `{ data: { playerName: string, playerCode: string } }` | Sent when a player is detected in Minecraft. |
+| `playerLeave` | `{ data: { playerName: string } }` | Sent when a player leaves Minecraft. |
+| `peerDisconnect` | `{ data: { playerName: string } }` | Sent when a peer disconnects from the signaling server. |
+| `sync` | `{ data: string }` | Raw base64 sync data (contains `pl` and `pd`) sent to Owner for relaying. |
+| `signal` | `{ target: "owner", sender: string, payload: any }` | WebRTC signaling data forwarded from a peer. |
 
-    Note over MC, BE: 同期ループ (100ms間隔)
-    loop Sync Interval
-        BE->>MC: コマンド実行: vc:sync
-        MC-->>BE: コマンド結果 (JSON文字列)
-        Note right of BE: プレイヤー位置・回転<br>グループ情報の更新
-        BE->>FE: 状態更新通知 (必要に応じて)
-    end
+### WebSocket Events (Server -> Frontend Peer)
 
-    Note over MC, BE: イベント通知
-    opt プレイヤー参加時
-        BE->>MC: コマンド実行: vc:notifyplayer
-        MC->>Player: チャットメッセージ送信 (RoomID/Code)
-    end
-```
+| Type | Payload | Description |
+| :--- | :--- | :--- |
+| `joinResponse` | `{ data: { playerName: string, roomId: string } }` | Sent upon successful room join. |
+| `signal` | `{ sender: "owner", payload: any }` | WebRTC signaling data forwarded from the owner. |
 
-## 3. 詳細フロー
+### WebSocket Events (Frontend -> Server)
 
-### 3.1. 接続確立
+| Type | Payload | Description |
+| :--- | :--- | :--- |
+| `signal` | `{ target: string, payload: any }` | WebRTC signaling data. `target` is "owner" (if sent by peer) or a player code (if sent by owner). |
 
-1.  **WebSocket接続**: Minecraftクライアント（またはサーバー）は、Backendの `/mcws` エンドポイントに対してWebSocket接続を確立します。
-    -   URL例: `ws://localhost:3000/mcws?roomId=12345`
-    -   `roomId` は必須パラメータであり、このIDに基づいて `RoomHandler` インスタンスが生成・特定されます。
+## 2. Frontend Communication
 
-2.  **初期化**: 接続が確立されると、Backendは `RoomHandler.init()` を呼び出し、同期ループを開始します。
+### Connection Flow
 
-### 3.2. データ同期 (Sync Loop)
+1.  **Owner** connects to `/frontendws`.
+2.  **Backend** generates a `roomId` and sends it to Owner.
+3.  **Backend** polls Minecraft for players.
+4.  When a player joins Minecraft, Backend generates a `playerCode` and notifies Owner (`playerJoin`).
+5.  **Peer** connects to `/frontendws?roomId=...&playerCode=...`.
+6.  **Backend** validates credentials and sends `joinResponse` to Peer.
 
-Backendは `setInterval` を使用して、100msごとに以下の処理を行います。
+### WebRTC Signaling (P2P)
 
-1.  **コマンド送信**: BackendはWebSocketを通じて、Minecraftに対して `vc:sync` コマンドを送信します。
-    -   コマンド: `vc:sync <getAll: boolean>`
-    -   `getAll`: `true` の場合、全データを要求します。`false` の場合、差分更新（最適化）を試みます。
+The Backend acts as a relay for WebRTC signaling messages (Offer, Answer, ICE Candidates).
 
-2.  **データ収集 (Addon側)**:
-    -   `apps/addon/BP/scripts/src/commands/server-sync.ts` が実行されます。
-    -   `SyncManager` がプレイヤーの位置 (`loc`)、回転 (`rot`)、所属グループ情報を収集します。
-    -   **最適化**: プレイヤーリスト (`pl`) は、プレイヤーの参加/退出があった場合、または `getAll=true` の場合のみ送信されます。これにより通信量が削減されます。
+1.  **Peer** (Initiator) creates an Offer and sends it to **Backend** (`target: "owner"`).
+2.  **Backend** forwards Offer to **Owner**.
+3.  **Owner** accepts Offer, creates Answer, and sends it to **Backend** (`target: peerCode`).
+4.  **Backend** forwards Answer to **Peer**.
+5.  ICE Candidates are exchanged similarly.
 
-3.  **データ返却**:
-    -   収集されたデータは `SimplifiedSyncData` 形式のオブジェクトになります。
-    -   これをJSON文字列化し、さらにBase64エンコードして `SimplifiedSyncMessage` に格納します。
-    -   最終的にJSON文字列としてBackendに返却されます。
+### Data Channel (P2P)
 
-4.  **状態更新 (Backend側)**:
-    -   Backendは受け取ったデータをデコードし、内部の `playerNames` リストや各プレイヤーの状態を更新します。
-    -   **プレイヤー管理**:
-        -   `pl` フィールドが存在する場合、新規参加プレイヤーの検出 (`handlePlayerJoin`) や退出プレイヤーの検出 (`handlePlayerLeave`) を行います。
-        -   `pl` が省略されている場合、プレイヤーリストに変更はないとみなします。
+Once the WebRTC connection is established, a Data Channel (`sync`) is used for real-time updates.
 
-### 3.3. プレイヤー通知
+-   **Owner** broadcasts state updates to all connected peers.
+-   **Payload**: `{ type: 'update', players: string[], statuses: Record<string, 'online' | 'offline'>, playerData: any[] }`
 
-プレイヤーがFrontendから参加し、Minecraft側とリンクする必要がある場合などに使用されます。
-
-1.  **コマンド送信**: Backendは `vc:notifyplayer` コマンドを送信します。
-    -   引数: `playerName`, `roomId`, `playerCode`
-2.  **メッセージ表示**: Addonは指定されたプレイヤーに対して、チャットメッセージで `Room ID` と `Player Code` を通知します。
-
-## 4. データ構造 (Type Definitions)
-
-通信に使用される主要なデータ型は `@minecraft/proximity-vc` パッケージ（`types/index.ts`）で定義されています。
-
-### SimplifiedSyncData
+## 3. Types
 
 ```typescript
-export interface SimplifiedSyncData {
-    g: SimplifiedGroupData[]; // グループ情報
-    pl?: string[];            // プレイヤー名リスト (Optional: 最適化のため)
-    pd: number[][][];         // プレイヤーデータ [位置, 回転, グループID]
+// WebSocket Message Types
+
+interface BaseMessage {
+    type: string;
+}
+
+interface CodeMessage extends BaseMessage {
+    code: string;
+}
+
+interface PlayerJoinMessage extends BaseMessage {
+    type: 'playerJoin';
+    data: {
+        playerName: string;
+        playerCode: string;
+    };
+}
+
+interface PlayerLeaveMessage extends BaseMessage {
+    type: 'playerLeave';
+    data: {
+        playerName: string;
+    };
+}
+
+interface JoinResponseMessage extends BaseMessage {
+    type: 'joinResponse';
+    data: {
+        playerName: string;
+        roomId: string;
+    };
+}
+
+interface SignalMessage extends BaseMessage {
+    type: 'signal';
+    target?: string; // "owner" or playerCode
+    sender?: string; // "owner" or playerCode (added by server)
+    payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
+}
+
+interface PeerDisconnectMessage extends BaseMessage {
+    type: 'peerDisconnect';
+    data: {
+        playerName: string;
+    };
+}
+
+// Data Channel Message Types
+
+interface SyncUpdateMessage {
+    type: 'update';
+    players: string[];
+    statuses: Record<string, 'online' | 'offline'>;
+    playerData: any[]; // Decoded from sync data
+}
+
+interface SyncMessage extends BaseMessage {
+    type: 'sync';
+    data: string; // Base64 encoded string
 }
 ```
-
--   `pl` をOptionalにすることで、毎フレームのプレイヤー名リスト送信を抑制しています。
-
-### SimplifiedSyncMessage
-
-```typescript
-export interface SimplifiedSyncMessage {
-    s: number; // シーケンス番号 (パケット順序保証用)
-    d: string; // Base64エンコードされた SimplifiedSyncData
-}
-```
-
-## 5. 通信の安定性と整合性
-
--   **シーケンス番号 (`s`)**: 各同期パケットにはシーケンス番号が付与されています。Backendはこれを確認し、パケットの欠落や順序の不整合を検知した場合、次回の要求で `getAll=true` を指定して完全同期を強制します（自己修復機能）。
--   **Base64エンコード**: コマンドの戻り値として複雑なJSON構造を安全に返すため、データ本体はBase64エンコードされています。

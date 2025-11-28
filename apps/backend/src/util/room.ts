@@ -137,6 +137,12 @@ export class RoomHandler {
                 });
             }
 
+            // Send raw sync data to owner
+            this.frontEndWs.send(JSON.stringify({
+                type: "sync",
+                data: syncMessage.d
+            }));
+
             this.getAll = false;
             if (syncMessage.s !== this.lastSequenceNumber + 1) {
                 this.getAll = true;
