@@ -6,6 +6,8 @@ import { PlayerGrid } from './components/PlayerGrid'
 import { ControlBar } from './components/ControlBar'
 import { Copy, Check } from 'lucide-react'
 import { CodeInput } from './components/ui/code-input'
+import { Toast, type ToastType } from './components/ui/toast'
+import { ConfirmationModal } from './components/ui/confirmation-modal'
 
 function App() {
   const [view, setView] = useState<'home' | 'create' | 'join' | 'connected'>('home')
@@ -17,6 +19,12 @@ function App() {
   const [playerStatuses, setPlayerStatuses] = useState<Record<string, 'online' | 'offline'>>({})
   const [playerCodes, setPlayerCodes] = useState<Record<string, string>>({}) // Code -> Name (Owner only)
   const wsRef = useRef<WebSocket | null>(null)
+
+  // Toast State
+  const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null)
+
+  // Modal State
+  const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false)
 
   // Join Room State
   const [joinRoomId, setJoinRoomId] = useState('')
@@ -51,6 +59,10 @@ function App() {
       broadcastPlayers(players, playerStatuses)
     }
   }, [players, playerStatuses])
+
+  const showToast = (message: string, type: ToastType = 'info') => {
+    setToast({ message, type })
+  }
 
   const broadcastPlayers = (currentPlayers: string[], currentStatuses: Record<string, 'online' | 'offline'>) => {
     const message = JSON.stringify({ type: 'update', players: currentPlayers, statuses: currentStatuses })
@@ -90,13 +102,11 @@ function App() {
           const playerName = prevCodes[targetPeerId]
           if (playerName) {
             setPlayerStatuses(prevStatuses => {
+              const isOnline = pc.connectionState === 'connected'
               const newStatuses = {
                 ...prevStatuses,
-                [playerName]: (pc.connectionState === 'connected' ? 'online' : 'offline') as 'online' | 'offline'
+                [playerName]: (isOnline ? 'online' : 'offline') as 'online' | 'offline'
               }
-              // Need to broadcast this update, but we are inside a callback.
-              // We can't easily access the latest 'players' state here without a ref or functional update side-effect.
-              // A simple way is to trigger a broadcast in a useEffect dependent on playerStatuses.
               return newStatuses
             })
           }
@@ -200,13 +210,14 @@ function App() {
           // For now, let's just pass the current state + default for new player
           setPlayerStatuses(prevStatuses => {
             const updatedStatuses: Record<string, 'online' | 'offline'> = { ...prevStatuses, [newPlayer]: 'offline' }
-            if (prev.length === 0) { // If it's the first player (Owner), mark online
+            if (newPlayer === myPlayerName || prev.length === 0) {
               updatedStatuses[newPlayer] = 'online'
             }
             return updatedStatuses
           })
           return updated
         })
+        showToast(`${newPlayer} joined the room`, 'success')
       } else if (message.type === 'playerLeave') {
         const leavingPlayer = message.data.playerName
         setPlayers((prev) => {
@@ -218,14 +229,23 @@ function App() {
           })
           return updated
         })
+        showToast(`${leavingPlayer} left the room`, 'info')
       } else if (message.type === 'signal') {
         await handleSignal(ws, message.sender, message.payload)
+      } else if (message.type === 'peerDisconnect') {
+        const disconnectedPlayer = message.data.playerName
+        setPlayerStatuses(prevStatuses => ({
+          ...prevStatuses,
+          [disconnectedPlayer]: 'offline'
+        }))
+        showToast(`${disconnectedPlayer} disconnected`, 'info')
       }
     }
 
     ws.onclose = () => {
       console.log('Disconnected')
       setIsConnected(false)
+      showToast('Disconnected from server', 'error')
     }
   }
 
@@ -244,7 +264,9 @@ function App() {
 
     ws.onclose = (event) => {
       console.log('Peer connection closed', event.code, event.reason)
-      alert(`Connection failed: ${event.reason || 'Unknown error'}`)
+      if (event.code !== 1000 && event.code !== 1001) {
+        showToast(`Connection failed: ${event.reason || 'Unknown error'}`, 'error')
+      }
     }
 
     ws.onmessage = async (event) => {
@@ -254,6 +276,7 @@ function App() {
         setMyPlayerName(message.data.playerName)
         setRoomCode(message.data.roomId)
         setView('connected')
+        showToast('Joined room successfully', 'success')
 
         // Initiate WebRTC connection to Owner
         const pc = await setupPeerConnection('owner', true, ws) // true = initiator
@@ -276,10 +299,15 @@ function App() {
       navigator.clipboard.writeText(`/connect localhost:3000/mcws/${roomCode}`)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+      showToast('Command copied to clipboard', 'success')
     }
   }
 
-  const handleDisconnect = () => {
+  const handleDisconnectClick = () => {
+    setIsDisconnectModalOpen(true)
+  }
+
+  const confirmDisconnect = () => {
     if (wsRef.current) {
       wsRef.current.close()
     }
@@ -290,10 +318,30 @@ function App() {
     setPlayerCodes({})
     setIsConnected(false)
     setMyPlayerName(null)
+    setIsDisconnectModalOpen(false)
+    showToast('Disconnected', 'info')
   }
 
   return (
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+
+      <ConfirmationModal
+        isOpen={isDisconnectModalOpen}
+        title="Disconnect?"
+        description="Are you sure you want to disconnect? You will leave the room."
+        confirmText="Disconnect"
+        variant="destructive"
+        onConfirm={confirmDisconnect}
+        onCancel={() => setIsDisconnectModalOpen(false)}
+      />
+
       {view === 'home' && (
         <Card className="w-full max-w-md border-0 shadow-xl bg-white">
           <CardHeader className="space-y-1 pb-8">
@@ -345,7 +393,7 @@ function App() {
               </div>
             </div>
 
-            <Button variant="ghost" className="w-full text-slate-500 hover:text-slate-700 hover:bg-slate-50" onClick={handleDisconnect}>
+            <Button variant="ghost" className="w-full text-slate-500 hover:text-slate-700 hover:bg-slate-50" onClick={handleDisconnectClick}>
               Cancel
             </Button>
           </CardContent>
@@ -391,10 +439,10 @@ function App() {
         <div className="w-full max-w-7xl space-y-8 animate-in fade-in duration-500">
           <div className="flex items-center justify-between bg-white p-6 rounded-xl shadow-sm border border-slate-100">
             <div>
-              <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Connected Players</h2>
+              <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{myPlayerName?.toUpperCase()}'s World</h2>
               <p className="text-slate-500 mt-1">Manage your proximity chat session</p>
             </div>
-            <Button variant="destructive" size="lg" className="shadow-sm hover:shadow-md transition-all" onClick={handleDisconnect}>
+            <Button variant="destructive" size="lg" className="shadow-sm hover:shadow-md transition-all" onClick={handleDisconnectClick}>
               Disconnect
             </Button>
           </div>
@@ -403,7 +451,7 @@ function App() {
 
           <ControlBar
             playerName={myPlayerName || 'Unknown'}
-            onDisconnect={handleDisconnect}
+            onDisconnect={handleDisconnectClick}
           />
 
           {/* Debug Buttons - To be removed */}

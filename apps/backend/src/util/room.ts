@@ -38,6 +38,7 @@ export class RoomHandler {
     }
 
     async handlePlayerLeave(playerName: string) {
+        console.log(`[Room] handlePlayerLeave: ${playerName}`);
         this.playerNames.splice(this.playerNames.indexOf(playerName), 1);
         // Remove from playerCodes
         for (const [code, name] of this.playerCodes.entries()) {
@@ -95,6 +96,11 @@ export class RoomHandler {
 
         ws.on("close", () => {
             this.peers.delete(playerCode);
+            // Notify owner about peer disconnect
+            this.frontEndWs.send(JSON.stringify({
+                type: "peerDisconnect",
+                data: { playerName }
+            }));
         });
     }
 
@@ -151,6 +157,16 @@ export class RoomHandler {
         this.minecraftWs.on("message", this.boundHandleMessage);
         this.minecraftWs.on("error", (e) => {
             console.error("Minecraft WebSocket error:", e);
+        });
+
+        this.minecraftWs.on("close", () => {
+            console.log(`[Room] Minecraft client disconnected. Room: ${this.roomId}`);
+            // Create a copy of the array because handlePlayerLeave modifies it
+            const players = [...this.playerNames];
+            for (const player of players) {
+                this.handlePlayerLeave(player);
+            }
+            this.destroy();
         });
 
         // Handle signaling messages from owner
