@@ -39,10 +39,7 @@ function App() {
       if (wsRef.current) {
         wsRef.current.close()
       }
-      peerConnections.current.forEach(pc => pc.close())
-      peerConnections.current.clear()
-      dataChannels.current.forEach(dc => dc.close())
-      dataChannels.current.clear()
+      cleanupConnections()
     }
   }, [])
 
@@ -303,14 +300,22 @@ function App() {
     }
   }
 
+  const cleanupConnections = () => {
+    peerConnections.current.forEach(pc => pc.close())
+    peerConnections.current.clear()
+    dataChannels.current.forEach(dc => dc.close())
+    dataChannels.current.clear()
+  }
+
   const handleDisconnectClick = () => {
     setIsDisconnectModalOpen(true)
   }
 
-  const confirmDisconnect = () => {
+  const handleDisconnect = () => {
     if (wsRef.current) {
       wsRef.current.close()
     }
+    cleanupConnections()
     setView('home')
     setRoomCode(null)
     setPlayers([])
@@ -318,8 +323,12 @@ function App() {
     setPlayerCodes({})
     setIsConnected(false)
     setMyPlayerName(null)
-    setIsDisconnectModalOpen(false)
     showToast('Disconnected', 'info')
+  }
+
+  const confirmDisconnect = () => {
+    handleDisconnect()
+    setIsDisconnectModalOpen(false)
   }
 
   return (
@@ -439,7 +448,7 @@ function App() {
         <div className="w-full max-w-7xl space-y-8 animate-in fade-in duration-500">
           <div className="flex items-center justify-between bg-white p-6 rounded-xl shadow-sm border border-slate-100">
             <div>
-              <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{myPlayerName?.toUpperCase()}'s World</h2>
+              <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{myPlayerName?.toUpperCase()}</h2>
               <p className="text-slate-500 mt-1">Manage your proximity chat session</p>
             </div>
             <Button variant="destructive" size="lg" className="shadow-sm hover:shadow-md transition-all" onClick={handleDisconnectClick}>

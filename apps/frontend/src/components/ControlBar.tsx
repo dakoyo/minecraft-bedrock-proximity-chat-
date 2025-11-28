@@ -36,7 +36,7 @@ export function ControlBar({ playerName, onDisconnect }: ControlBarProps) {
                     onClick={() => setIsDeafened(!isDeafened)}
                     title={isDeafened ? "Undeafen" : "Deafen"}
                 >
-                    {isDeafened ? <Headphones className="h-5 w-5 text-red-500" /> : <Headphones className="h-5 w-5" />}
+                    {isDeafened ? <Headphones className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
                 </Button>
 
                 <div className="h-8 w-px bg-border mx-2" />
