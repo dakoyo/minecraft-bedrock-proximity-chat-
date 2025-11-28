@@ -14,7 +14,7 @@ export function PlayerPanel({ playerName, volume: initialVolume, onVolumeChange,
   const [volume, setVolume] = useState(initialVolume)
 
   return (
-    <Card className="w-full bg-card/50 backdrop-blur-sm border-primary/20 hover:border-primary/50 transition-colors">
+    <Card className="w-full bg-white shadow-md border border-slate-100 hover:shadow-lg hover:border-primary/30 transition-all duration-300">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">

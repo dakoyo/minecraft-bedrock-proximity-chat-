@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button } from './components/ui/button'
-import { Input } from './components/ui/input'
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card'
 import { PlayerGrid } from './components/PlayerGrid'
 import { ControlBar } from './components/ControlBar'
 import { Copy, Check } from 'lucide-react'
+import { CodeInput } from './components/ui/code-input'
 
 function App() {
   const [view, setView] = useState<'home' | 'create' | 'join' | 'connected'>('home')
@@ -292,22 +293,22 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
       {view === 'home' && (
-        <Card className="w-full max-w-md bg-card/50 backdrop-blur-sm border-primary/20">
-          <CardHeader>
-            <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+        <Card className="w-full max-w-md border-0 shadow-xl bg-white">
+          <CardHeader className="space-y-1 pb-8">
+            <CardTitle className="text-4xl font-bold text-center text-primary tracking-tight">
               Proximity Chat
             </CardTitle>
-            <CardDescription className="text-center text-lg">
+            <CardDescription className="text-center text-lg text-muted-foreground font-light">
               Minecraft Bedrock Edition
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button className="w-full h-12 text-lg font-medium transition-all hover:scale-[1.02]" onClick={createRoom}>
+            <Button className="w-full h-14 text-lg font-semibold shadow-md hover:shadow-lg transition-all" onClick={createRoom}>
               Create Room
             </Button>
-            <Button variant="secondary" className="w-full h-12 text-lg font-medium transition-all hover:scale-[1.02]" onClick={() => setView('join')}>
+            <Button variant="outline" className="w-full h-14 text-lg font-medium border-2 hover:bg-slate-50 transition-all" onClick={() => setView('join')}>
               Join Room
             </Button>
           </CardContent>
@@ -315,34 +316,36 @@ function App() {
       )}
 
       {view === 'create' && (
-        <Card className="w-full max-w-md bg-card/50 backdrop-blur-sm border-primary/20">
-          <CardHeader>
-            <CardTitle>Create Room</CardTitle>
-            <CardDescription>Run this command in Minecraft to connect</CardDescription>
+        <Card className="w-full max-w-md border-0 shadow-xl bg-white">
+          <CardHeader className="pb-6">
+            <CardTitle className="text-2xl font-bold text-center">Create Room</CardTitle>
+            <CardDescription className="text-center">Run this command in Minecraft to connect</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="p-4 bg-black/40 rounded-lg border border-primary/20 relative group">
-              <code className="text-primary font-mono text-sm break-all">
+            <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 relative group transition-all hover:border-primary/20">
+              <code className="text-primary font-mono text-sm break-all font-medium block text-center">
                 /connect localhost:3000/mcws/{roomCode || '...'}
               </code>
               <Button
                 size="icon"
                 variant="ghost"
-                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
                 onClick={copyCommand}
               >
-                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4 text-slate-400" />}
               </Button>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
-                {isConnected ? 'Waiting for Minecraft connection...' : 'Connecting to server...'}
+            <div className="space-y-3">
+              <div className="flex items-center justify-center gap-3 text-sm font-medium">
+                <div className={`w-3 h-3 rounded-full shadow-sm ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-orange-300'}`} />
+                <span className={isConnected ? 'text-green-600' : 'text-slate-500'}>
+                  {isConnected ? 'Waiting for Minecraft connection...' : 'Connecting to server...'}
+                </span>
               </div>
             </div>
 
-            <Button variant="ghost" className="w-full" onClick={handleDisconnect}>
+            <Button variant="ghost" className="w-full text-slate-500 hover:text-slate-700 hover:bg-slate-50" onClick={handleDisconnect}>
               Cancel
             </Button>
           </CardContent>
@@ -350,34 +353,34 @@ function App() {
       )}
 
       {view === 'join' && (
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Join Room</CardTitle>
-            <CardDescription>Enter the Room ID and your Player Code</CardDescription>
+        <Card className="w-full max-w-md border-0 shadow-xl bg-white">
+          <CardHeader className="pb-6">
+            <CardTitle className="text-2xl font-bold text-center">Join Room</CardTitle>
+            <CardDescription className="text-center">Enter the Room ID and your Player Code</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="roomId" className="text-sm font-medium">Room ID</label>
-              <Input
-                id="roomId"
-                placeholder="Enter Room ID"
+              <label htmlFor="roomId" className="text-sm font-semibold text-slate-700">Room ID</label>
+              <CodeInput
                 value={joinRoomId}
-                onChange={(e) => setJoinRoomId(e.target.value)}
+                onChange={setJoinRoomId}
+                length={5}
+                className="w-full"
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="playerCode" className="text-sm font-medium">Player Code</label>
-              <Input
-                id="playerCode"
-                placeholder="Enter Player Code"
+              <label htmlFor="playerCode" className="text-sm font-semibold text-slate-700">Player Code</label>
+              <CodeInput
                 value={joinPlayerCode}
-                onChange={(e) => setJoinPlayerCode(e.target.value)}
+                onChange={setJoinPlayerCode}
+                length={4}
+                className="w-full"
               />
             </div>
-            <Button className="w-full" onClick={joinRoom} disabled={!joinRoomId || !joinPlayerCode}>
+            <Button className="w-full h-12 text-lg font-semibold shadow-md mt-2" onClick={joinRoom} disabled={!joinRoomId || !joinPlayerCode}>
               Join Room
             </Button>
-            <Button variant="ghost" className="w-full" onClick={() => setView('home')}>
+            <Button variant="ghost" className="w-full text-slate-500 hover:text-slate-700 hover:bg-slate-50" onClick={() => setView('home')}>
               Back
             </Button>
           </CardContent>
@@ -385,10 +388,13 @@ function App() {
       )}
 
       {view === 'connected' && (
-        <div className="w-full max-w-7xl space-y-8">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-bold">Connected Players</h2>
-            <Button variant="destructive" onClick={handleDisconnect}>
+        <div className="w-full max-w-7xl space-y-8 animate-in fade-in duration-500">
+          <div className="flex items-center justify-between bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+            <div>
+              <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Connected Players</h2>
+              <p className="text-slate-500 mt-1">Manage your proximity chat session</p>
+            </div>
+            <Button variant="destructive" size="lg" className="shadow-sm hover:shadow-md transition-all" onClick={handleDisconnect}>
               Disconnect
             </Button>
           </div>
@@ -401,10 +407,11 @@ function App() {
           />
 
           {/* Debug Buttons - To be removed */}
-          <div className="flex gap-2 mt-8">
+          <div className="flex gap-2 mt-8 opacity-50 hover:opacity-100 transition-opacity">
             <Button
               variant="outline"
-              className="border-dashed border-yellow-500 text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50"
+              size="sm"
+              className="border-dashed border-yellow-500 text-yellow-600 hover:bg-yellow-50"
               onClick={() => {
                 const fakeName = `Player${Math.floor(Math.random() * 1000)}`
                 setPlayers(prev => [...prev, fakeName])
@@ -414,7 +421,8 @@ function App() {
             </Button>
             <Button
               variant="outline"
-              className="border-dashed border-red-500 text-red-500 hover:text-red-600 hover:bg-red-50"
+              size="sm"
+              className="border-dashed border-red-500 text-red-600 hover:bg-red-50"
               onClick={() => {
                 setPlayers(prev => {
                   if (prev.length === 0) return prev

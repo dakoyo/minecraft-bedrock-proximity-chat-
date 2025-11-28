@@ -12,7 +12,7 @@ export function ControlBar({ playerName, onDisconnect }: ControlBarProps) {
     const [isDeafened, setIsDeafened] = useState(false)
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 h-16 bg-background/80 backdrop-blur-md border-t flex items-center justify-between px-6 z-50">
+        <div className="fixed bottom-0 left-0 right-0 h-20 bg-white/90 backdrop-blur-xl border-t border-slate-200 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.1)] flex items-center justify-between px-8 z-50">
             <div className="flex items-center gap-2">
                 <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
                     {playerName.charAt(0).toUpperCase()}

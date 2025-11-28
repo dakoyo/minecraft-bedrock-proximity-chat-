@@ -1,5 +1,5 @@
 export function generateRandomRoomCode(length: number = 5): string {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     let result = '';
 
     for (let i = 0; i < length; i++) {
