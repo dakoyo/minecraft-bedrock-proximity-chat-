@@ -3,7 +3,7 @@ import { debug } from "../setting";
 const { world, system } = mc;
 
 export const command: mc.CustomCommand = {
-    name: "vcserver:notifyplayer",
+    name: "vc:notifyplayer",
     description: "notifies the player of the room code",
     permissionLevel: mc.CommandPermissionLevel.GameDirectors,
     mandatoryParameters: [

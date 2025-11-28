@@ -4,6 +4,11 @@ export interface GroupTypes {
     Open: "Open";
 }
 
+export interface VCSettings {
+    voiceRange: number;
+    canHearSpectator: boolean;
+}
+
 export interface SimplifiedGroupTypes {
     Normal: "n";
     Isorated: "i";
@@ -30,6 +35,7 @@ export interface SimplifiedSyncMessage {
 export interface SimplifiedSyncData {
     g: SimplifiedGroupData[]; // groups
     pl?: string[] // player names
+    s?: VCSettings // settings
     pd: number[][][] // player data
 }
 

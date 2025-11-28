@@ -2,9 +2,9 @@ import * as mc from "@minecraft/server";
 const { world } = mc;
 import { SimplifiedSyncData } from "@minecraft/proximity-vc";
 import { groupManager } from "./group";
-import { debug } from "./setting";
+import { debug, getSetting } from "./setting";
 
-type EventTypes = "playerUpdate" | "groupUpdate";
+type EventTypes = "playerUpdate" | "groupUpdate" | "settingsUpdate";
 
 class SyncManager {
     constructor() { }
@@ -33,6 +33,13 @@ class SyncManager {
         if (this.lastPlayerNumber !== players.length) {
             this.lastPlayerNumber = players.length;
             this.addEvent("playerUpdate");
+        }
+
+        if (getAll || this.events.includes("settingsUpdate")) {
+            data.s = {
+                voiceRange: getSetting("voiceRange") as number,
+                canHearSpectator: getSetting("canHearSpectator") as boolean
+            }
         }
 
         if (getAll || this.events.includes("playerUpdate")) {

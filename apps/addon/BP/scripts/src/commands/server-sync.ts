@@ -5,7 +5,7 @@ import { btoa } from "../util/base64";
 import { SimplifiedSyncMessage } from "@minecraft/proximity-vc";
 
 export const command: mc.CustomCommand = {
-    name: "vcserver:sync",
+    name: "vc:sync",
     description: "Syncs the server with the addon",
     permissionLevel: mc.CommandPermissionLevel.GameDirectors,
     optionalParameters: [

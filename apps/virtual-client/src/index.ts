@@ -85,7 +85,7 @@ function handleCommandRequest(header: any, body: any) {
         sendCommandResponse(requestId, {
             localPlayerName: playerName
         });
-    } else if (commandLine.startsWith("vcserver:sync")) {
+    } else if (commandLine.startsWith("vc:sync")) {
         const args = commandLine.split(" ");
         const getAll = args[1] === "true";
 
@@ -113,7 +113,7 @@ function handleCommandRequest(header: any, body: any) {
 
         sendCommandResponse(requestId, JSON.stringify(syncMessage));
 
-    } else if (commandLine.startsWith("vcserver:notifyplayer")) {
+    } else if (commandLine.startsWith("vc:notifyplayer")) {
         console.log("Notification received:", commandLine);
         sendCommandResponse(requestId, "Notification received");
     } else {

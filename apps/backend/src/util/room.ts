@@ -106,14 +106,14 @@ export class RoomHandler {
 
     async notifyPlayerCode(playerName: string, playerCode: string) {
         if (this.localPlayerName === playerName) return;
-        await this.runCommand(`vcserver:notifyplayer ${playerName} ${this.roomId} ${playerCode}`);
+        await this.runCommand(`vc:notifyplayer ${playerName} ${this.roomId} ${playerCode}`);
     }
 
     async sync() {
         if (this.isSyncing || this.destroyed) return;
         this.isSyncing = true;
         try {
-            const syncMessageRaw = await this.runCommand(`vcserver:sync ${this.getAll ? "true" : "false"}`);
+            const syncMessageRaw = await this.runCommand(`vc:sync ${this.getAll ? "true" : "false"}`);
             const syncMessage: SimplifiedSyncMessage = JSON.parse(syncMessageRaw);
 
             const syncDataRaw = atob(syncMessage.d);

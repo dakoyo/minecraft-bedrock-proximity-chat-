@@ -27,7 +27,7 @@ sequenceDiagram
 
     Note over MC, BE: 同期ループ (100ms間隔)
     loop Sync Interval
-        BE->>MC: コマンド実行: vcserver:sync
+        BE->>MC: コマンド実行: vc:sync
         MC-->>BE: コマンド結果 (JSON文字列)
         Note right of BE: プレイヤー位置・回転<br>グループ情報の更新
         BE->>FE: 状態更新通知 (必要に応じて)
@@ -35,7 +35,7 @@ sequenceDiagram
 
     Note over MC, BE: イベント通知
     opt プレイヤー参加時
-        BE->>MC: コマンド実行: vcserver:notifyplayer
+        BE->>MC: コマンド実行: vc:notifyplayer
         MC->>Player: チャットメッセージ送信 (RoomID/Code)
     end
 ```
@@ -54,8 +54,8 @@ sequenceDiagram
 
 Backendは `setInterval` を使用して、100msごとに以下の処理を行います。
 
-1.  **コマンド送信**: BackendはWebSocketを通じて、Minecraftに対して `vcserver:sync` コマンドを送信します。
-    -   コマンド: `vcserver:sync <getAll: boolean>`
+1.  **コマンド送信**: BackendはWebSocketを通じて、Minecraftに対して `vc:sync` コマンドを送信します。
+    -   コマンド: `vc:sync <getAll: boolean>`
     -   `getAll`: `true` の場合、全データを要求します。`false` の場合、差分更新（最適化）を試みます。
 
 2.  **データ収集 (Addon側)**:
@@ -78,7 +78,7 @@ Backendは `setInterval` を使用して、100msごとに以下の処理を行�
 
 プレイヤーがFrontendから参加し、Minecraft側とリンクする必要がある場合などに使用されます。
 
-1.  **コマンド送信**: Backendは `vcserver:notifyplayer` コマンドを送信します。
+1.  **コマンド送信**: Backendは `vc:notifyplayer` コマンドを送信します。
     -   引数: `playerName`, `roomId`, `playerCode`
 2.  **メッセージ表示**: Addonは指定されたプレイヤーに対して、チャットメッセージで `Room ID` と `Player Code` を通知します。
 
