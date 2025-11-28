@@ -19,6 +19,7 @@ function App() {
   const [playerStatuses, setPlayerStatuses] = useState<Record<string, 'online' | 'offline'>>({})
   const [playerCodes, setPlayerCodes] = useState<Record<string, string>>({}) // Code -> Name (Owner only)
   const wsRef = useRef<WebSocket | null>(null)
+  const isIntentionalDisconnect = useRef(false)
 
   // Toast State
   const [toast, setToast] = useState<{ message: string, type: ToastType } | null>(null)
@@ -176,6 +177,7 @@ function App() {
   }
 
   const createRoom = () => {
+    isIntentionalDisconnect.current = false
     setView('create')
     const ws = new WebSocket('ws://localhost:3000/frontendws')
     wsRef.current = ws
@@ -239,14 +241,17 @@ function App() {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       console.log('Disconnected')
       setIsConnected(false)
-      showToast('Disconnected from server', 'error')
+      if (!isIntentionalDisconnect.current) {
+        showToast('Disconnected from server', 'error')
+      }
     }
   }
 
   const joinRoom = () => {
+    isIntentionalDisconnect.current = false
     const rId = joinRoomId.trim()
     const pCode = joinPlayerCode.trim()
     if (!rId || !pCode) return
@@ -261,6 +266,7 @@ function App() {
 
     ws.onclose = (event) => {
       console.log('Peer connection closed', event.code, event.reason)
+      if (isIntentionalDisconnect.current) return
       if (event.code !== 1000 && event.code !== 1001) {
         showToast(`Connection failed: ${event.reason || 'Unknown error'}`, 'error')
       }
@@ -312,6 +318,7 @@ function App() {
   }
 
   const handleDisconnect = () => {
+    isIntentionalDisconnect.current = true
     if (wsRef.current) {
       wsRef.current.close()
     }
