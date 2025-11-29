@@ -594,13 +594,18 @@ function App() {
       } else if (message.type === 'playerJoin') {
         const newPlayer: string = message.data.playerName
         const newPlayerCode: string = message.data.playerCode
+        const isOwner: boolean = message.data.isOwner
+
         setMyPlayerName((prev) => {
-          if (!prev && localStream.current) {
-            // If this is the first time we get our name, map our local stream
-            const streamId = localStream.current.id
-            setStreamMapping(m => ({ ...m, [streamId]: newPlayer }))
+          if (isOwner) {
+            if (!prev && localStream.current) {
+              // If this is the first time we get our name, map our local stream
+              const streamId = localStream.current.id
+              setStreamMapping(m => ({ ...m, [streamId]: newPlayer }))
+            }
+            return newPlayer
           }
-          return prev || newPlayer
+          return prev
         })
 
         // Update Player Codes (Owner only)

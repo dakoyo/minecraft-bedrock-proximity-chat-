@@ -33,7 +33,16 @@ export class RoomHandler {
 
         this.playerNames.push(playerName);
         this.playerCodes.set(playerCode, playerName);
-        this.frontEndWs.send(JSON.stringify({ type: "playerJoin", data: { playerName, playerCode } }));
+
+        const isOwner = this.localPlayerName === playerName;
+        this.frontEndWs.send(JSON.stringify({
+            type: "playerJoin",
+            data: {
+                playerName,
+                playerCode,
+                isOwner
+            }
+        }));
         await this.notifyPlayerCode(playerName, playerCode);
     }
 
@@ -195,6 +204,14 @@ export class RoomHandler {
         });
 
         if (this.destroyed) return;
+
+        // Identify Owner
+        try {
+            this.localPlayerName = await this.runCommand("getlocalplayername");
+            console.log(`[Room] Owner identified as: ${this.localPlayerName}`);
+        } catch (e) {
+            console.error("[Room] Failed to identify owner:", e);
+        }
 
         this.interval = setInterval(async () => {
             if (this.destroyed) {
