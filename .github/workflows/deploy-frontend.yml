@@ -35,8 +35,8 @@ jobs:
       - name: Build Frontend
         run: pnpm --filter frontend build
         env:
-          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL }}
-          VITE_WS_URL: ${{ vars.VITE_WS_URL }}
+          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL || secrets.VITE_BACKEND_URL }}
+          VITE_WS_URL: ${{ vars.VITE_WS_URL || secrets.VITE_WS_URL }}
 
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
