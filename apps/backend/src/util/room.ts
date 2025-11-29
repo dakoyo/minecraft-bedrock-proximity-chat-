@@ -271,19 +271,50 @@ export class RoomHandler {
         })
     }
 
-    destroy() {
+    async destroy() {
+        if (this.destroyed) return;
         this.destroyed = true;
         if (this.interval) {
             clearInterval(this.interval);
         }
-        if (this.minecraftWs) {
-            this.minecraftWs.off("message", this.boundHandleMessage);
-            this.minecraftWs.terminate();
-        }
+
         // Close all peer connections
         for (const peer of this.peers.values()) {
             peer.close();
         }
         this.peers.clear();
+
+        if (this.minecraftWs) {
+            this.minecraftWs.off("message", this.boundHandleMessage);
+            await closeMinecraftWebSocket(this.minecraftWs);
+        }
     }
+}
+
+export async function closeMinecraftWebSocket(ws: WebSocket) {
+    if (ws.readyState === WebSocket.OPEN) {
+        try {
+            const requestId = randomUUID();
+            const commandPacket = {
+                header: {
+                    version: 1,
+                    requestId: requestId,
+                    messagePurpose: "commandRequest",
+                },
+                body: {
+                    version: 1,
+                    commandLine: "closewebsocket",
+                    origin: {
+                        type: "player"
+                    }
+                },
+            };
+            ws.send(JSON.stringify(commandPacket));
+            // Wait for Minecraft to process the command and close the connection
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (e) {
+            console.error("Error sending closewebsocket command:", e);
+        }
+    }
+    ws.terminate();
 }

@@ -16,7 +16,14 @@ export class WebRTCManager {
 
     async initLocalStream() {
         try {
-            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            this.localStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
+                },
+                video: false
+            });
         } catch (e) {
             console.error("Failed to get user media", e);
         }

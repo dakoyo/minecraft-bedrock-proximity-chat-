@@ -9,6 +9,7 @@ import { Copy, Check } from 'lucide-react'
 import { CodeInput } from './components/ui/code-input'
 import { Toast, type ToastType } from './components/ui/toast'
 import { ConfirmationModal } from './components/ui/confirmation-modal'
+import { NoiseSuppressionProcessor } from '@shiguredo/noise-suppression'
 
 function App() {
   const [view, setView] = useState<'home' | 'create' | 'join' | 'connected'>('home')
@@ -45,6 +46,7 @@ function App() {
   const dataChannels = useRef<Map<string, RTCDataChannel>>(new Map())
   const audioManager = useRef<AudioManager | null>(null)
   const localStream = useRef<MediaStream | null>(null)
+  const processorRef = useRef<NoiseSuppressionProcessor | null>(null)
 
   useEffect(() => {
     audioManager.current = new AudioManager()
@@ -136,6 +138,9 @@ function App() {
       try {
         console.log(`Negotiation needed for ${targetPeerId}`)
         const offer = await pc.createOffer()
+        if (offer.sdp) {
+          offer.sdp = setOpusBitrate(offer.sdp, 128000)
+        }
         await pc.setLocalDescription(offer)
         ws.send(JSON.stringify({
           type: 'signal',
@@ -332,6 +337,9 @@ function App() {
     if (payload.type === 'offer') {
       await pc.setRemoteDescription(new RTCSessionDescription(payload))
       const answer = await pc.createAnswer()
+      if (answer.sdp) {
+        answer.sdp = setOpusBitrate(answer.sdp, 128000)
+      }
       await pc.setLocalDescription(answer)
       ws.send(JSON.stringify({
         type: 'signal',
@@ -348,9 +356,22 @@ function App() {
   const createRoom = async () => {
     isIntentionalDisconnect.current = false
 
+    // Peer Connection
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      localStream.current = stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      })
+
+      const processor = new NoiseSuppressionProcessor()
+      processorRef.current = processor
+      const track = stream.getAudioTracks()[0]
+      await processor.startProcessing(track)
+      localStream.current = new MediaStream([processor.getProcessedTrack()])
+
     } catch (err) {
       console.error('Failed to get local stream', err)
       showToast('Microphone access denied', 'error')
@@ -466,8 +487,20 @@ function App() {
 
     // Peer Connection
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      localStream.current = stream
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      })
+
+      const processor = new NoiseSuppressionProcessor()
+      processorRef.current = processor
+      const track = stream.getAudioTracks()[0]
+      await processor.startProcessing(track)
+      localStream.current = new MediaStream([processor.getProcessedTrack()])
+
     } catch (err) {
       console.error('Failed to get local stream', err)
       showToast('Microphone access denied', 'error')
@@ -539,6 +572,10 @@ function App() {
     if (localStream.current) {
       localStream.current.getTracks().forEach(track => track.stop())
       localStream.current = null
+    }
+    if (processorRef.current) {
+      processorRef.current.stopProcessing()
+      processorRef.current = null
     }
     // We might want to clear audio peers too, but AudioManager doesn't have a clear method exposed yet.
     // But removePeer is available.
@@ -762,4 +799,53 @@ function App() {
   )
 }
 
+
+// Helper to set Opus bitrate
+function setOpusBitrate(sdp: string, bitrate: number): string {
+  const lines = sdp.split(/\r\n|\r|\n/);
+
+  // Let's do the two-pass approach.
+  let opusPayloadType = -1;
+  for (const line of lines) {
+    if (line.startsWith('a=rtpmap:') && line.toLowerCase().includes('opus/48000')) {
+      const parts = line.split(' ');
+      const pt = parts[0].split(':')[1];
+      opusPayloadType = parseInt(pt, 10);
+      break;
+    }
+  }
+
+  if (opusPayloadType === -1) return sdp;
+
+  let fmtpFound = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith(`a=fmtp:${opusPayloadType}`)) {
+      fmtpFound = true;
+      let line = lines[i];
+      if (line.includes('maxaveragebitrate')) {
+        line = line.replace(/maxaveragebitrate=\d+/, `maxaveragebitrate=${bitrate}`);
+      } else {
+        line += `;maxaveragebitrate=${bitrate}`;
+      }
+      lines[i] = line;
+      break;
+    }
+  }
+
+  if (!fmtpFound) {
+    // Insert after rtpmap
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith(`a=rtpmap:${opusPayloadType}`)) {
+        lines.splice(i + 1, 0, `a=fmtp:${opusPayloadType} maxaveragebitrate=${bitrate}`);
+        break;
+      }
+    }
+  }
+
+
+  return lines.join('\r\n');
+}
+
 export default App
+
+

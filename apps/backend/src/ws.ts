@@ -1,12 +1,16 @@
 import { IncomingMessage } from "http";
 import { WebSocket } from "ws";
 import { rooms } from "./rooms";
-import { RoomHandler } from "./util/room";
+import { RoomHandler, closeMinecraftWebSocket } from "./util/room";
 import { generateRandomRoomCode } from "./util/code";
 
 export default async function handleWsConnection(ws: WebSocket, req: IncomingMessage) {
+    ws.on("error", (e) => {
+        console.error("WebSocket error:", e);
+    });
+
     if (req.url?.startsWith("/mcws")) {
-        handleMinecraftWsConnection(ws, req);
+        await handleMinecraftWsConnection(ws, req);
     } else if (req.url?.startsWith("/frontendws")) {
         handleFrontEndWsConnection(ws, req);
     } else {
@@ -14,25 +18,25 @@ export default async function handleWsConnection(ws: WebSocket, req: IncomingMes
     }
 }
 
-function handleMinecraftWsConnection(ws: WebSocket, req: IncomingMessage) {
+async function handleMinecraftWsConnection(ws: WebSocket, req: IncomingMessage) {
     let roomId = getRoomCode(req);
     if (!roomId) {
-        ws.close();
+        await closeMinecraftWebSocket(ws);
         return;
     }
     if (!rooms.has(roomId)) {
-        ws.close();
+        await closeMinecraftWebSocket(ws);
         return;
     }
     try {
         const roomHandler = rooms.get(roomId);
         if (!roomHandler) {
-            ws.close();
+            await closeMinecraftWebSocket(ws);
             return;
         }
         roomHandler.init(ws);
     } catch (e) {
-        ws.close();
+        await closeMinecraftWebSocket(ws);
     }
 }
 
