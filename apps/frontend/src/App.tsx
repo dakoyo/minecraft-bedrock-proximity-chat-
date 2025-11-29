@@ -294,9 +294,27 @@ function App() {
     })
   }
 
+  // TURN Credentials State
+  const [iceServers, setIceServers] = useState<RTCIceServer[]>([])
+
+  useEffect(() => {
+    const fetchTurnCredentials = async () => {
+      try {
+        const response = await fetch('http://localhost:3000/turn-credentials')
+        const servers = await response.json()
+        setIceServers(servers)
+      } catch (e) {
+        console.error('Failed to fetch TURN credentials', e)
+        // Fallback to Google STUN
+        setIceServers([{ urls: 'stun:stun.l.google.com:19302' }])
+      }
+    }
+    fetchTurnCredentials()
+  }, [])
+
   const setupPeerConnection = async (targetPeerId: string, isInitiator: boolean, ws: WebSocket) => {
     const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: iceServers.length > 0 ? iceServers : [{ urls: 'stun:stun.l.google.com:19302' }]
     })
 
     pc.onnegotiationneeded = async () => {
