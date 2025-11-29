@@ -963,11 +963,11 @@ function App() {
             <div className="flex items-center gap-2 overflow-hidden">
               <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">Room Link:</span>
               <code className="text-sm bg-slate-50 px-2 py-1 rounded text-slate-700 truncate">
-                {`${window.location.origin}?roomid=${roomCode}`}
+                {`${location.href}?roomid=${roomCode}`}
               </code>
             </div>
             <Button size="sm" variant="outline" className="gap-2" onClick={() => {
-              const url = `${window.location.origin}?roomid=${roomCode}`
+              const url = `${location.href}?roomid=${roomCode}`
               navigator.clipboard.writeText(url)
               setCopied(true)
               setTimeout(() => setCopied(false), 2000)
