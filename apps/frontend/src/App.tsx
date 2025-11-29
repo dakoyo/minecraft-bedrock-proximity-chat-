@@ -5,7 +5,7 @@ import { Button } from './components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card'
 import { PlayerGrid } from './components/PlayerGrid'
 import { ControlBar } from './components/ControlBar'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, Settings } from 'lucide-react'
 import { CodeInput } from './components/ui/code-input'
 import { Toast, type ToastType } from './components/ui/toast'
 import { ConfirmationModal } from './components/ui/confirmation-modal'
@@ -68,6 +68,14 @@ function App() {
   useEffect(() => {
     audioManager.current = new AudioManager()
     setAudioContextState(audioManager.current.getAudioContextState())
+
+    // Parse URL parameters
+    const params = new URLSearchParams(window.location.search)
+    const roomIdParam = params.get('roomid')
+    if (roomIdParam) {
+      setJoinRoomId(roomIdParam)
+      setView('join')
+    }
 
     const interval = setInterval(() => {
       if (audioManager.current) {
@@ -150,6 +158,7 @@ function App() {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: selectedInputId ? { exact: selectedInputId } : undefined,
+          channelCount: 1,
           echoCancellation: false, // We handle processing manually or via Shiguredo
           noiseSuppression: false,
           autoGainControl: false
@@ -166,7 +175,10 @@ function App() {
       if (inputSource.current) inputSource.current.disconnect()
       if (inputGain.current) inputGain.current.disconnect()
       // inputDestination stays connected usually, but let's recreate to be safe or just reuse
-      if (!inputDestination.current) inputDestination.current = ctx.createMediaStreamDestination()
+      if (!inputDestination.current) {
+        inputDestination.current = ctx.createMediaStreamDestination()
+        inputDestination.current.channelCount = 1
+      }
 
       inputSource.current = ctx.createMediaStreamSource(stream)
       inputGain.current = ctx.createGain()
@@ -513,15 +525,30 @@ function App() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          channelCount: 1,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false
         }
       })
 
+      // Downmix to mono using AudioContext
+      if (!inputAudioContext.current) {
+        inputAudioContext.current = new AudioContext()
+      }
+      const ctx = inputAudioContext.current
+      const source = ctx.createMediaStreamSource(stream)
+      const destination = ctx.createMediaStreamDestination()
+      destination.channelCount = 1
+      source.connect(destination)
+
+      // Update refs
+      inputSource.current = source
+      inputDestination.current = destination
+
       const processor = new NoiseSuppressionProcessor()
       processorRef.current = processor
-      const track = stream.getAudioTracks()[0]
+      const track = destination.stream.getAudioTracks()[0]
       await processor.startProcessing(track)
       localStream.current = new MediaStream([processor.getProcessedTrack()])
 
@@ -642,15 +669,30 @@ function App() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          channelCount: 1,
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false
         }
       })
 
+      // Downmix to mono using AudioContext
+      if (!inputAudioContext.current) {
+        inputAudioContext.current = new AudioContext()
+      }
+      const ctx = inputAudioContext.current
+      const source = ctx.createMediaStreamSource(stream)
+      const destination = ctx.createMediaStreamDestination()
+      destination.channelCount = 1
+      source.connect(destination)
+
+      // Update refs
+      inputSource.current = source
+      inputDestination.current = destination
+
       const processor = new NoiseSuppressionProcessor()
       processorRef.current = processor
-      const track = stream.getAudioTracks()[0]
+      const track = destination.stream.getAudioTracks()[0]
       await processor.startProcessing(track)
       localStream.current = new MediaStream([processor.getProcessedTrack()])
 
@@ -781,7 +823,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex items-center justify-center p-4">
+    <div className={`min-h-screen bg-background text-foreground flex justify-center p-4 ${view === 'connected' ? 'items-start pt-8' : 'items-center'}`}>
       {toast && (
         <Toast
           message={toast.message}
@@ -894,18 +936,35 @@ function App() {
       )}
 
       {view === 'connected' && (
-        <div className="w-full max-w-7xl space-y-8 animate-in fade-in duration-500">
+        <div className="w-full max-w-7xl space-y-8 animate-in fade-in duration-500 pb-24">
+          {/* Share Link */}
+          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <span className="text-sm font-semibold text-slate-500 whitespace-nowrap">Room Link:</span>
+              <code className="text-sm bg-slate-50 px-2 py-1 rounded text-slate-700 truncate">
+                {`${window.location.origin}?roomid=${roomCode}`}
+              </code>
+            </div>
+            <Button size="sm" variant="outline" className="gap-2" onClick={() => {
+              const url = `${window.location.origin}?roomid=${roomCode}`
+              navigator.clipboard.writeText(url)
+              setCopied(true)
+              setTimeout(() => setCopied(false), 2000)
+              showToast('Link copied to clipboard', 'success')
+            }}>
+              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              {copied ? 'Copied' : 'Copy Link'}
+            </Button>
+          </div>
+
           <div className="flex items-center justify-between bg-white p-6 rounded-xl shadow-sm border border-slate-100">
             <div>
               <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{myPlayerName?.toUpperCase()}</h2>
               <p className="text-slate-500 mt-1">Manage your proximity chat session</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
-                Settings
-              </Button>
-              <Button variant="destructive" size="lg" className="shadow-sm hover:shadow-md transition-all" onClick={handleDisconnectClick}>
-                Disconnect
+              <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setIsSettingsOpen(true)}>
+                <Settings className="h-6 w-6 text-slate-600" />
               </Button>
             </div>
           </div>
@@ -939,7 +998,7 @@ function App() {
           />
 
           {/* Debug Buttons - To be removed */}
-          <div className="flex gap-2 mt-8 opacity-50 hover:opacity-100 transition-opacity">
+          {/* <div className="flex gap-2 mt-8 opacity-50 hover:opacity-100 transition-opacity">
             <Button
               variant="outline"
               size="sm"
@@ -966,7 +1025,7 @@ function App() {
             >
               [Debug] - Leave
             </Button>
-          </div>
+          </div> */}
         </div>
       )}
 
