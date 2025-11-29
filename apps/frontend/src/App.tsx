@@ -893,7 +893,7 @@ function App() {
           <CardContent className="space-y-6">
             <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 relative group transition-all hover:border-primary/20">
               <code className="text-primary font-mono text-sm break-all font-medium block text-center">
-                /connect {import.meta.env.VITE_BACKEND_URL}/mcws/{roomCode || '...'}
+                /connect {import.meta.env.VITE_WS_URL}/mcws/{roomCode || '...'}
               </code>
               <Button
                 size="icon"
