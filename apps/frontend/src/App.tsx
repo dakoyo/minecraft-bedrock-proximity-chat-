@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { AudioManager } from './lib/audio'
 import { Button } from './components/ui/button'
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './components/ui/card'
@@ -20,6 +21,7 @@ function App() {
   const [playerData, setPlayerData] = useState<any[]>([])
   const [vcSettings, setVcSettings] = useState<any>(null)
   const [playerCodes, setPlayerCodes] = useState<Record<string, string>>({}) // Code -> Name (Owner only)
+  const playerCodesRef = useRef<Record<string, string>>({})
   const wsRef = useRef<WebSocket | null>(null)
   const isIntentionalDisconnect = useRef(false)
 
@@ -32,19 +34,44 @@ function App() {
   // Join Room State
   const [joinRoomId, setJoinRoomId] = useState('')
   const [joinPlayerCode, setJoinPlayerCode] = useState('')
+  const [audioContextState, setAudioContextState] = useState<AudioContextState>('suspended')
+  const [isMuted, setIsMuted] = useState(false)
+  const [isDeafened, setIsDeafened] = useState(false)
+  const [streamMapping, setStreamMapping] = useState<Record<string, string>>({}) // StreamID -> PlayerName
 
   // WebRTC State
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
+  const remoteStreams = useRef<Map<string, MediaStream>>(new Map())
   const dataChannels = useRef<Map<string, RTCDataChannel>>(new Map())
+  const audioManager = useRef<AudioManager | null>(null)
+  const localStream = useRef<MediaStream | null>(null)
 
   useEffect(() => {
+    audioManager.current = new AudioManager()
+    setAudioContextState(audioManager.current.getAudioContextState())
+
+    const interval = setInterval(() => {
+      if (audioManager.current) {
+        setAudioContextState(audioManager.current.getAudioContextState())
+      }
+    }, 1000)
+
     return () => {
+      clearInterval(interval)
       if (wsRef.current) {
         wsRef.current.close()
       }
       cleanupConnections()
+      if (audioManager.current) {
+        audioManager.current.dispose()
+      }
     }
   }, [])
+
+  // Keep playerCodesRef in sync
+  useEffect(() => {
+    playerCodesRef.current = playerCodes
+  }, [playerCodes])
 
   // Transition to connected view when players join
   useEffect(() => {
@@ -53,19 +80,46 @@ function App() {
     }
   }, [players, view])
 
+  // Identify peers whenever streamMapping or audioManager changes
+  useEffect(() => {
+    if (audioManager.current) {
+      Object.entries(streamMapping).forEach(([streamId, playerName]) => {
+        audioManager.current?.identifyPeer(streamId, playerName)
+      })
+    }
+  }, [streamMapping])
+
   // Broadcast updates whenever players or statuses change
   useEffect(() => {
     if (players.length > 0) {
-      broadcastPlayers(players, playerStatuses, playerData, vcSettings)
+      broadcastPlayers(players, playerStatuses, playerData, vcSettings, streamMapping)
     }
-  }, [players, playerStatuses, playerData, vcSettings])
+  }, [players, playerStatuses, playerData, vcSettings, streamMapping])
+
+  // Update Audio Manager with sync data for spatial audio
+  useEffect(() => {
+    if (audioManager.current && players.length > 0) {
+      audioManager.current.processSyncData({
+        pl: players,
+        pd: playerData,
+        s: vcSettings
+      } as any, myPlayerName || '')
+    }
+  }, [players, playerData, vcSettings, myPlayerName])
 
   const showToast = (message: string, type: ToastType = 'info') => {
     setToast({ message, type })
   }
 
-  const broadcastPlayers = (currentPlayers: string[], currentStatuses: Record<string, 'online' | 'offline'>, currentPlayerData: any[], currentVcSettings: any) => {
-    const message = JSON.stringify({ type: 'update', players: currentPlayers, statuses: currentStatuses, playerData: currentPlayerData, vcSettings: currentVcSettings })
+  const broadcastPlayers = (currentPlayers: string[], currentStatuses: Record<string, 'online' | 'offline'>, currentPlayerData: any[], currentVcSettings: any, currentStreamMapping: Record<string, string>) => {
+    const message = JSON.stringify({
+      type: 'update',
+      players: currentPlayers,
+      statuses: currentStatuses,
+      playerData: currentPlayerData,
+      vcSettings: currentVcSettings,
+      streamMapping: currentStreamMapping
+    })
     dataChannels.current.forEach(dc => {
       if (dc.readyState === 'open') {
         dc.send(message)
@@ -77,6 +131,101 @@ function App() {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     })
+
+    pc.onnegotiationneeded = async () => {
+      try {
+        console.log(`Negotiation needed for ${targetPeerId}`)
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+        ws.send(JSON.stringify({
+          type: 'signal',
+          target: targetPeerId === 'owner' ? 'owner' : targetPeerId,
+          payload: offer
+        }))
+      } catch (err) {
+        console.error(`Error during negotiation with ${targetPeerId}:`, err)
+      }
+    }
+
+    if (localStream.current) {
+      console.log(`Adding local tracks to ${targetPeerId}`)
+      localStream.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStream.current!)
+      })
+    } else {
+      console.warn(`No local stream to add for ${targetPeerId}`)
+    }
+
+    // If we are Owner, add existing remote streams from OTHER peers to this new peer
+    if (targetPeerId !== 'owner') {
+      console.log(`Checking for existing remote streams to relay to ${targetPeerId}`)
+      remoteStreams.current.forEach((stream, streamPeerId) => {
+        if (streamPeerId !== targetPeerId) {
+          console.log(`Relaying existing stream from ${streamPeerId} to ${targetPeerId}`)
+          stream.getTracks().forEach(track => {
+            pc.addTrack(track, stream)
+          })
+        }
+      })
+    }
+
+    pc.ontrack = (event) => {
+      if (event.streams && event.streams[0]) {
+        const stream = event.streams[0]
+        const streamId = stream.id
+        console.log(`Received remote stream from ${targetPeerId} (${streamId})`)
+
+        // Use stream.id as the unique identifier for audio to allow multiple streams from the same peer (e.g. Owner relaying)
+        remoteStreams.current.set(targetPeerId, stream) // This might overwrite on Peer side, but fine for now
+        audioManager.current?.addStream(streamId, stream)
+
+        // If we are Owner, we need to map this stream to the player
+        if (targetPeerId !== 'owner') {
+          // We need to know who this targetPeerId belongs to.
+          // We have playerCodes: Code -> Name
+          // targetPeerId IS the playerCode for peers connecting to owner.
+          const playerName = playerCodesRef.current[targetPeerId]
+          if (playerName) {
+            console.log(`Mapping stream ${streamId} to player ${playerName}`)
+            setStreamMapping(prev => ({ ...prev, [streamId]: playerName }))
+          } else {
+            console.warn(`Could not map stream ${streamId} to player: ${targetPeerId} not found in playerCodes`, playerCodesRef.current)
+          }
+        }
+
+        // Cleanup when tracks end
+        stream.getTracks().forEach(track => {
+          track.onended = () => {
+            console.log(`Track ${track.id} ended for stream ${streamId}`)
+            audioManager.current?.removePeer(streamId)
+          }
+        })
+
+        // Relay to other peers if we are the Owner
+        if (targetPeerId !== 'owner') { // We are Owner
+          console.log(`Relaying stream from ${targetPeerId} to other peers`)
+          peerConnections.current.forEach((otherPc, otherPeerId) => {
+            if (otherPeerId !== targetPeerId && otherPc.connectionState !== 'closed') {
+              event.streams[0].getTracks().forEach(track => {
+                const senders = otherPc.getSenders()
+                const alreadyHasTrack = senders.some(sender => sender.track?.id === track.id)
+
+                if (!alreadyHasTrack) {
+                  console.log(`Adding track ${track.id} from ${targetPeerId} to ${otherPeerId}`)
+                  try {
+                    otherPc.addTrack(track, event.streams[0])
+                  } catch (e) {
+                    console.error(`Failed to add track to ${otherPeerId}`, e)
+                  }
+                } else {
+                  console.log(`Peer ${otherPeerId} already has track ${track.id}`)
+                }
+              })
+            }
+          })
+        }
+      }
+    }
 
     peerConnections.current.set(targetPeerId, pc)
 
@@ -98,20 +247,19 @@ function App() {
         // But if Owner disconnects, maybe mark everyone offline?
       } else {
         // Owner side: Update Peer status
-        setPlayerCodes(prevCodes => {
-          const playerName = prevCodes[targetPeerId]
-          if (playerName) {
-            setPlayerStatuses(prevStatuses => {
-              const isOnline = pc.connectionState === 'connected'
-              const newStatuses = {
-                ...prevStatuses,
-                [playerName]: (isOnline ? 'online' : 'offline') as 'online' | 'offline'
-              }
-              return newStatuses
-            })
-          }
-          return prevCodes
-        })
+        // Use ref to get latest codes
+        const codes = playerCodesRef.current
+        const playerName = codes[targetPeerId]
+        if (playerName) {
+          setPlayerStatuses(prevStatuses => {
+            const isOnline = pc.connectionState === 'connected'
+            const newStatuses = {
+              ...prevStatuses,
+              [playerName]: (isOnline ? 'online' : 'offline') as 'online' | 'offline'
+            }
+            return newStatuses
+          })
+        }
       }
     }
 
@@ -131,6 +279,10 @@ function App() {
             setVcSettings(msg.vcSettings)
             console.log('Received vc settings:', msg.vcSettings)
           }
+          if (msg.streamMapping) {
+            setStreamMapping(msg.streamMapping)
+            // console.log('Received stream mapping:', msg.streamMapping)
+          }
         }
       }
     } else {
@@ -142,7 +294,14 @@ function App() {
         setPlayers(prev => {
           // We need statuses too. Using functional update to access latest.
           setPlayerStatuses(prevStatuses => {
-            dc.send(JSON.stringify({ type: 'update', players: prev, statuses: prevStatuses, playerData: playerData, vcSettings: vcSettings }))
+            dc.send(JSON.stringify({
+              type: 'update',
+              players: prev,
+              statuses: prevStatuses,
+              playerData: playerData,
+              vcSettings: vcSettings,
+              streamMapping: streamMapping
+            }))
             return prevStatuses
           })
           return prev
@@ -186,8 +345,18 @@ function App() {
     }
   }
 
-  const createRoom = () => {
+  const createRoom = async () => {
     isIntentionalDisconnect.current = false
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      localStream.current = stream
+    } catch (err) {
+      console.error('Failed to get local stream', err)
+      showToast('Microphone access denied', 'error')
+      return
+    }
+
     setView('create')
     const ws = new WebSocket('ws://localhost:3000/frontendws')
     wsRef.current = ws
@@ -204,7 +373,14 @@ function App() {
       } else if (message.type === 'playerJoin') {
         const newPlayer: string = message.data.playerName
         const newPlayerCode: string = message.data.playerCode
-        setMyPlayerName((prev) => prev || newPlayer)
+        setMyPlayerName((prev) => {
+          if (!prev && localStream.current) {
+            // If this is the first time we get our name, map our local stream
+            const streamId = localStream.current.id
+            setStreamMapping(m => ({ ...m, [streamId]: newPlayer }))
+          }
+          return prev || newPlayer
+        })
 
         // Update Player Codes (Owner only)
         if (newPlayerCode) {
@@ -260,6 +436,13 @@ function App() {
             setVcSettings(syncData.s)
             // console.log('Updated vc settings:', syncData.s)
           }
+          // Sync data might not contain streamMapping if it's from MC mod directly?
+          // Actually sync data is usually from MC.
+          // The 'update' message is from Owner via DataChannel.
+          // This 'sync' message is from Backend (relayed from MC or Owner?).
+          // If it's from Owner via WebSocket (which we don't do for 'update'), it might be different.
+          // 'update' is P2P. 'sync' is WS.
+          // We only use 'update' for streamMapping.
         } catch (e) {
           console.error('Failed to parse sync data', e)
         }
@@ -275,13 +458,22 @@ function App() {
     }
   }
 
-  const joinRoom = () => {
+  const joinRoom = async () => {
     isIntentionalDisconnect.current = false
     const rId = joinRoomId.trim()
     const pCode = joinPlayerCode.trim()
     if (!rId || !pCode) return
 
     // Peer Connection
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      localStream.current = stream
+    } catch (err) {
+      console.error('Failed to get local stream', err)
+      showToast('Microphone access denied', 'error')
+      return
+    }
+
     const ws = new WebSocket(`ws://localhost:3000/frontendws?roomId=${rId}&playerCode=${pCode}`)
     wsRef.current = ws
 
@@ -302,19 +494,26 @@ function App() {
       const message = JSON.parse(event.data)
       if (message.type === 'joinResponse') {
         setMyPlayerName(message.data.playerName)
+        if (localStream.current) {
+          const streamId = localStream.current.id
+          // Map my own stream so I can identify it (though I don't play it back usually, but good for consistency)
+          // Actually, peers send their stream to Owner. Owner maps it.
+          // But if I want to visualize or debug, knowing my stream ID helps.
+          // Also, if we ever implement local loopback for testing.
+          setStreamMapping(m => ({ ...m, [streamId]: message.data.playerName }))
+        }
         setRoomCode(message.data.roomId)
         setView('connected')
         showToast('Joined room successfully', 'success')
 
         // Initiate WebRTC connection to Owner
+        // We don't create offer here manually anymore, we let onnegotiationneeded handle it
+        // BUT for the initial connection, we might need to trigger it or just add tracks (which triggers it)
         const pc = await setupPeerConnection('owner', true, ws) // true = initiator
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-        ws.send(JSON.stringify({
-          type: 'signal',
-          target: 'owner', // Backend handles routing to owner
-          payload: offer
-        }))
+
+        // Adding tracks in setupPeerConnection should trigger onnegotiationneeded
+        // But sometimes it fires too early or we miss it?
+        // Let's rely on onnegotiationneeded.
 
       } else if (message.type === 'signal') {
         await handleSignal(ws, message.sender, message.payload)
@@ -334,8 +533,18 @@ function App() {
   const cleanupConnections = () => {
     peerConnections.current.forEach(pc => pc.close())
     peerConnections.current.clear()
+    remoteStreams.current.clear()
     dataChannels.current.forEach(dc => dc.close())
     dataChannels.current.clear()
+    if (localStream.current) {
+      localStream.current.getTracks().forEach(track => track.stop())
+      localStream.current = null
+    }
+    // We might want to clear audio peers too, but AudioManager doesn't have a clear method exposed yet.
+    // But removePeer is available.
+    // Ideally we should track added peers in AudioManager or just rely on it being recreated or peers removed.
+    // Since we re-create AudioManager on mount (which is only once), we should probably clear it.
+    // But for now, just stopping tracks is enough to stop audio.
   }
 
   const handleDisconnectClick = () => {
@@ -361,6 +570,24 @@ function App() {
   const confirmDisconnect = () => {
     handleDisconnect()
     setIsDisconnectModalOpen(false)
+  }
+
+  const toggleMute = () => {
+    const newMuted = !isMuted
+    setIsMuted(newMuted)
+    if (localStream.current) {
+      localStream.current.getAudioTracks().forEach(track => {
+        track.enabled = !newMuted
+      })
+    }
+  }
+
+  const toggleDeafen = () => {
+    const newDeafened = !isDeafened
+    setIsDeafened(newDeafened)
+    if (audioManager.current) {
+      audioManager.current.setMasterVolume(newDeafened ? 0 : 1)
+    }
   }
 
   return (
@@ -492,6 +719,10 @@ function App() {
 
           <ControlBar
             playerName={myPlayerName || 'Unknown'}
+            isMuted={isMuted}
+            isDeafened={isDeafened}
+            onToggleMute={toggleMute}
+            onToggleDeafen={toggleDeafen}
             onDisconnect={handleDisconnectClick}
           />
 

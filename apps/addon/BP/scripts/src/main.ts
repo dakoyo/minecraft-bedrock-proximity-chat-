@@ -7,3 +7,10 @@ const { world, system } = mc;
 system.beforeEvents.startup.subscribe(ev => {
     registerAllCommands(ev.customCommandRegistry);
 })
+
+system.runInterval(() => {
+    for (const player of world.getPlayers()) {
+        const rot = player.getRotation();
+        player.onScreenDisplay.setActionBar(`Rot: {x: ${Math.floor(rot.x)}, y: ${Math.floor(rot.y)}}`)
+    }
+})

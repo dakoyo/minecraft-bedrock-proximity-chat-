@@ -1,15 +1,16 @@
-import { useState } from 'react'
 import { Button } from './ui/button'
 import { Mic, MicOff, Headphones, PhoneOff } from 'lucide-react'
 
 interface ControlBarProps {
     playerName: string
+    isMuted: boolean
+    isDeafened: boolean
+    onToggleMute: () => void
+    onToggleDeafen: () => void
     onDisconnect: () => void
 }
 
-export function ControlBar({ playerName, onDisconnect }: ControlBarProps) {
-    const [isMuted, setIsMuted] = useState(false)
-    const [isDeafened, setIsDeafened] = useState(false)
+export function ControlBar({ playerName, isMuted, isDeafened, onToggleMute, onToggleDeafen, onDisconnect }: ControlBarProps) {
 
     return (
         <div className="fixed bottom-0 left-0 right-0 h-20 bg-white/90 backdrop-blur-xl border-t border-slate-200 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.1)] flex items-center justify-between px-8 z-50">
@@ -24,7 +25,7 @@ export function ControlBar({ playerName, onDisconnect }: ControlBarProps) {
                 <Button
                     variant={isMuted ? "destructive" : "secondary"}
                     size="icon"
-                    onClick={() => setIsMuted(!isMuted)}
+                    onClick={onToggleMute}
                     title={isMuted ? "Unmute" : "Mute"}
                 >
                     {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
@@ -33,7 +34,7 @@ export function ControlBar({ playerName, onDisconnect }: ControlBarProps) {
                 <Button
                     variant={isDeafened ? "destructive" : "secondary"}
                     size="icon"
-                    onClick={() => setIsDeafened(!isDeafened)}
+                    onClick={onToggleDeafen}
                     title={isDeafened ? "Undeafen" : "Deafen"}
                 >
                     {isDeafened ? <Headphones className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
