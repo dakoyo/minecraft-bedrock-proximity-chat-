@@ -65,6 +65,8 @@ function App() {
   const inputGain = useRef<GainNode | null>(null)
   const inputDestination = useRef<MediaStreamAudioDestinationNode | null>(null)
 
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
+
   useEffect(() => {
     audioManager.current = new AudioManager()
     setAudioContextState(audioManager.current.getAudioContextState())
@@ -300,7 +302,7 @@ function App() {
   useEffect(() => {
     const fetchTurnCredentials = async () => {
       try {
-        const response = await fetch('http://localhost:3000/turn-credentials')
+        const response = await fetch(`${backendUrl}/turn-credentials`)
         const servers = await response.json()
         setIceServers(servers)
       } catch (e) {
@@ -577,7 +579,7 @@ function App() {
     }
 
     setView('create')
-    const ws = new WebSocket('ws://localhost:3000/frontendws')
+    const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/frontendws`)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -720,7 +722,7 @@ function App() {
       return
     }
 
-    const ws = new WebSocket(`ws://localhost:3000/frontendws?roomId=${rId}&playerCode=${pCode}`)
+    const ws = new WebSocket(`${import.meta.env.VITE_WS_URL}/frontendws?roomId=${rId}&playerCode=${pCode}`)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -769,7 +771,8 @@ function App() {
 
   const copyCommand = () => {
     if (roomCode) {
-      navigator.clipboard.writeText(`/connect localhost:3000/mcws/${roomCode}`)
+      const wsUrl = import.meta.env.VITE_WS_URL.replace(/^ws:\/\/|^wss:\/\//, '')
+      navigator.clipboard.writeText(`/connect ${wsUrl}/mcws/${roomCode}`)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
       showToast('Command copied to clipboard', 'success')
@@ -890,7 +893,7 @@ function App() {
           <CardContent className="space-y-6">
             <div className="p-6 bg-slate-50 rounded-xl border border-slate-100 relative group transition-all hover:border-primary/20">
               <code className="text-primary font-mono text-sm break-all font-medium block text-center">
-                /connect localhost:3000/mcws/{roomCode || '...'}
+                /connect {backendUrl}/mcws/{roomCode || '...'}
               </code>
               <Button
                 size="icon"
