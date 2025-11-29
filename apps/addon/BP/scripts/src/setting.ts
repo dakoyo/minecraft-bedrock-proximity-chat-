@@ -1,6 +1,6 @@
 import { world } from "@minecraft/server";
 
-export const debug = true;
+export const debug = false;
 
 export const defaultSettings = {
     voiceRange: {

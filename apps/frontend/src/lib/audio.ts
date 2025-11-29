@@ -221,6 +221,20 @@ export class AudioManager {
         });
     }
 
+    setPeerVolume(playerName: string, volume: number) {
+        this.peers.forEach(peer => {
+            if (peer.playerName === playerName) {
+                // Volume is 0-200 in UI, map to 0-2 for gain
+                const gainValue = volume / 100;
+                peer.gain.gain.value = gainValue;
+                if (peer.audioElement) {
+                    peer.audioElement.volume = Math.min(gainValue, 1); // HTML Audio element volume is 0-1
+                    peer.audioElement.muted = gainValue === 0;
+                }
+            }
+        });
+    }
+
     // Process sync data to update all peers
     processSyncData(data: SimplifiedSyncData, myPlayerName: string) {
         if (data.s) {

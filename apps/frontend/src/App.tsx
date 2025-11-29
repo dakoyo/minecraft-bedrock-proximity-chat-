@@ -843,6 +843,12 @@ function App() {
     }
   }
 
+  const handleVolumeChange = (playerName: string, volume: number) => {
+    if (audioManager.current) {
+      audioManager.current.setPeerVolume(playerName, volume)
+    }
+  }
+
   return (
     <div className={`min-h-screen bg-background text-foreground flex justify-center p-4 ${view === 'connected' ? 'items-start pt-8' : 'items-center'}`}>
       {toast && (
@@ -1007,7 +1013,11 @@ function App() {
             onNoiseSuppressionChange={setNoiseSuppression}
           />
 
-          <PlayerGrid players={players.filter(p => p !== myPlayerName)} playerStatuses={playerStatuses} />
+          <PlayerGrid
+            players={players.filter(p => p !== myPlayerName)}
+            playerStatuses={playerStatuses}
+            onVolumeChange={handleVolumeChange}
+          />
 
           <ControlBar
             playerName={myPlayerName || 'Unknown'}
