@@ -36,7 +36,7 @@ function App() {
   // Join Room State
   const [joinRoomId, setJoinRoomId] = useState('')
   const [joinPlayerCode, setJoinPlayerCode] = useState('')
-  const [audioContextState, setAudioContextState] = useState<AudioContextState>('suspended')
+  const [, setAudioContextState] = useState<AudioContextState>('suspended')
   const [isMuted, setIsMuted] = useState(false)
   const [isDeafened, setIsDeafened] = useState(false)
   const [streamMapping, setStreamMapping] = useState<Record<string, string>>({}) // StreamID -> PlayerName
@@ -668,7 +668,7 @@ function App() {
       }
     }
 
-    ws.onclose = (event) => {
+    ws.onclose = () => {
       console.log('Disconnected')
       setIsConnected(false)
       if (!isIntentionalDisconnect.current) {
@@ -755,7 +755,7 @@ function App() {
         // Initiate WebRTC connection to Owner
         // We don't create offer here manually anymore, we let onnegotiationneeded handle it
         // BUT for the initial connection, we might need to trigger it or just add tracks (which triggers it)
-        const pc = await setupPeerConnection('owner', true, ws) // true = initiator
+        await setupPeerConnection('owner', true, ws) // true = initiator
 
         // Adding tracks in setupPeerConnection should trigger onnegotiationneeded
         // But sometimes it fires too early or we miss it?
