@@ -9,6 +9,7 @@ import { Copy, Check } from 'lucide-react'
 import { CodeInput } from './components/ui/code-input'
 import { Toast, type ToastType } from './components/ui/toast'
 import { ConfirmationModal } from './components/ui/confirmation-modal'
+import { SettingsModal } from './components/SettingsModal'
 import { NoiseSuppressionProcessor } from '@shiguredo/noise-suppression'
 
 function App() {
@@ -48,6 +49,22 @@ function App() {
   const localStream = useRef<MediaStream | null>(null)
   const processorRef = useRef<NoiseSuppressionProcessor | null>(null)
 
+  // Settings State
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
+  const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedInputId, setSelectedInputId] = useState('')
+  const [selectedOutputId, setSelectedOutputId] = useState('')
+  const [inputVolume, setInputVolume] = useState(1.0)
+  const [outputVolume, setOutputVolume] = useState(1.0)
+  const [noiseSuppression, setNoiseSuppression] = useState(true)
+
+  // Input Audio Chain Refs
+  const inputAudioContext = useRef<AudioContext | null>(null)
+  const inputSource = useRef<MediaStreamAudioSourceNode | null>(null)
+  const inputGain = useRef<GainNode | null>(null)
+  const inputDestination = useRef<MediaStreamAudioDestinationNode | null>(null)
+
   useEffect(() => {
     audioManager.current = new AudioManager()
     setAudioContextState(audioManager.current.getAudioContextState())
@@ -67,8 +84,144 @@ function App() {
       if (audioManager.current) {
         audioManager.current.dispose()
       }
+      if (inputAudioContext.current) {
+        inputAudioContext.current.close()
+      }
     }
   }, [])
+
+  // Device Enumeration
+  useEffect(() => {
+    const getDevices = async () => {
+      try {
+        // Request permission first to get labels
+        // await navigator.mediaDevices.getUserMedia({ audio: true }) // We do this in create/join, but for settings we might need it earlier?
+        // Actually, enumerateDevices returns empty labels if no permission.
+        // We assume permission is granted when joining/creating.
+        // If settings is opened before, labels might be empty.
+
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const inputs = devices.filter(d => d.kind === 'audioinput')
+        const outputs = devices.filter(d => d.kind === 'audiooutput')
+        setInputDevices(inputs)
+        setOutputDevices(outputs)
+
+        // Set defaults if not set
+        if (!selectedInputId && inputs.length > 0) setSelectedInputId(inputs[0].deviceId)
+        if (!selectedOutputId && outputs.length > 0) setSelectedOutputId(outputs[0].deviceId)
+      } catch (e) {
+        console.error('Failed to enumerate devices', e)
+      }
+    }
+
+    navigator.mediaDevices.addEventListener('devicechange', getDevices)
+    getDevices()
+
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', getDevices)
+    }
+  }, [selectedInputId, selectedOutputId])
+
+  // Apply Output Volume
+  useEffect(() => {
+    if (audioManager.current) {
+      audioManager.current.setMasterVolume(outputVolume)
+    }
+  }, [outputVolume])
+
+  // Apply Output Device
+  useEffect(() => {
+    if (audioManager.current && selectedOutputId) {
+      audioManager.current.setSinkId(selectedOutputId)
+    }
+  }, [selectedOutputId])
+
+  // Apply Input Volume
+  useEffect(() => {
+    if (inputGain.current) {
+      inputGain.current.gain.value = inputVolume
+    }
+  }, [inputVolume])
+
+  // Helper to update local stream based on settings
+  const updateLocalStream = async () => {
+    try {
+      // 1. Get User Media
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: selectedInputId ? { exact: selectedInputId } : undefined,
+          echoCancellation: false, // We handle processing manually or via Shiguredo
+          noiseSuppression: false,
+          autoGainControl: false
+        }
+      })
+
+      // 2. Setup Input Chain (Gain)
+      if (!inputAudioContext.current) {
+        inputAudioContext.current = new AudioContext()
+      }
+      const ctx = inputAudioContext.current
+
+      // Cleanup old nodes
+      if (inputSource.current) inputSource.current.disconnect()
+      if (inputGain.current) inputGain.current.disconnect()
+      // inputDestination stays connected usually, but let's recreate to be safe or just reuse
+      if (!inputDestination.current) inputDestination.current = ctx.createMediaStreamDestination()
+
+      inputSource.current = ctx.createMediaStreamSource(stream)
+      inputGain.current = ctx.createGain()
+      inputGain.current.gain.value = inputVolume
+
+      inputSource.current.connect(inputGain.current)
+      inputGain.current.connect(inputDestination.current)
+
+      let processedStream = inputDestination.current.stream
+
+      // 3. Apply Noise Suppression (Shiguredo)
+      if (noiseSuppression) {
+        if (!processorRef.current) {
+          processorRef.current = new NoiseSuppressionProcessor()
+        }
+        const track = processedStream.getAudioTracks()[0]
+        if (processorRef.current.isProcessing()) {
+          processorRef.current.stopProcessing()
+        }
+        await processorRef.current.startProcessing(track)
+        processedStream = new MediaStream([processorRef.current.getProcessedTrack()])
+      } else {
+        if (processorRef.current && processorRef.current.isProcessing()) {
+          processorRef.current.stopProcessing()
+        }
+      }
+
+      // 4. Update Local Stream Ref
+      localStream.current = processedStream
+
+      // 5. Update Peer Connections
+      // Replace track in all senders
+      peerConnections.current.forEach(pc => {
+        const senders = pc.getSenders()
+        const audioSender = senders.find(s => s.track?.kind === 'audio')
+        if (audioSender && processedStream.getAudioTracks()[0]) {
+          audioSender.replaceTrack(processedStream.getAudioTracks()[0])
+        }
+      })
+
+    } catch (e) {
+      console.error('Failed to update local stream', e)
+      showToast('Failed to update audio settings', 'error')
+    }
+  }
+
+  // Trigger stream update when relevant settings change
+  // Note: We only want to trigger this when connected or previewing?
+  // For now, let's trigger if we have an active session (isConnected)
+  useEffect(() => {
+    if (isConnected) {
+      updateLocalStream()
+    }
+  }, [selectedInputId, noiseSuppression, isConnected])
+
 
   // Keep playerCodesRef in sync
   useEffect(() => {
@@ -747,10 +900,32 @@ function App() {
               <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{myPlayerName?.toUpperCase()}</h2>
               <p className="text-slate-500 mt-1">Manage your proximity chat session</p>
             </div>
-            <Button variant="destructive" size="lg" className="shadow-sm hover:shadow-md transition-all" onClick={handleDisconnectClick}>
-              Disconnect
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setIsSettingsOpen(true)}>
+                Settings
+              </Button>
+              <Button variant="destructive" size="lg" className="shadow-sm hover:shadow-md transition-all" onClick={handleDisconnectClick}>
+                Disconnect
+              </Button>
+            </div>
           </div>
+
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            inputDevices={inputDevices}
+            outputDevices={outputDevices}
+            selectedInputId={selectedInputId}
+            selectedOutputId={selectedOutputId}
+            inputVolume={inputVolume}
+            outputVolume={outputVolume}
+            noiseSuppression={noiseSuppression}
+            onInputDeviceChange={setSelectedInputId}
+            onOutputDeviceChange={setSelectedOutputId}
+            onInputVolumeChange={setInputVolume}
+            onOutputVolumeChange={setOutputVolume}
+            onNoiseSuppressionChange={setNoiseSuppression}
+          />
 
           <PlayerGrid players={players.filter(p => p !== myPlayerName)} playerStatuses={playerStatuses} />
 

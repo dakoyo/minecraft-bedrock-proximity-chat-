@@ -274,6 +274,20 @@ export class AudioManager {
         });
     }
 
+    async setSinkId(deviceId: string) {
+        if ('setSinkId' in this.destination) {
+            try {
+                // @ts-ignore - setSinkId is not yet in standard types
+                await (this.destination as any).setSinkId(deviceId);
+                console.log(`[AudioManager] Output device set to ${deviceId}`);
+            } catch (e) {
+                console.error(`[AudioManager] Failed to set output device`, e);
+            }
+        } else {
+            console.warn('[AudioManager] setSinkId not supported');
+        }
+    }
+
     dispose() {
         console.log('[AudioManager] Disposing...');
         this.peers.forEach(peer => {
